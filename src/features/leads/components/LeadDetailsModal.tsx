@@ -1,0 +1,292 @@
+"use client";
+
+import { useState } from "react";
+import { Button, Drawer, ListBox, Select, Tabs } from "@heroui/react";
+
+import { useSessionStore } from "@/state/session-store";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { useLeadDetailsQuery } from "@/features/leads/hooks/useLeadDetailsQuery";
+import { useAssignOperatorMutation, useMoveLeadMutation } from "@/features/leads/hooks/useLeadMutations";
+import { useTeamMembersQuery } from "@/features/team/hooks/useTeamMembersQuery";
+import { formatLeadName, isLeadOverdue, type LeadBoardColumn, type LeadRow } from "@/features/leads/types";
+import { CHANNEL_ICONS } from "@/features/leads/channelIcons";
+import { leadActionErrorMessage } from "@/features/leads/leadActionError";
+import { MarkSoldDialog } from "@/features/leads/components/MarkSoldDialog";
+import { MarkRejectedDialog } from "@/features/leads/components/MarkRejectedDialog";
+import { LeadAdditionalPhones } from "@/features/leads/components/LeadAdditionalPhones";
+import { LeadCustomFieldsSection } from "@/features/leads/components/LeadCustomFieldsSection";
+import { LeadCommentsTab } from "@/features/leads/components/LeadCommentsTab";
+import { LeadTimelineTab } from "@/features/leads/components/LeadTimelineTab";
+import { LeadTagsTab } from "@/features/leads/components/LeadTagsTab";
+import { LeadConversationsTab } from "@/features/leads/components/LeadConversationsTab";
+import { LeadSmsTab } from "@/features/leads/components/LeadSmsTab";
+import { LeadTasksTab } from "@/features/leads/components/LeadTasksTab";
+import { LeadStatsTab } from "@/features/leads/components/LeadStatsTab";
+import { LeadAiAssistTab } from "@/features/leads/components/LeadAiAssistTab";
+
+type DetailsTab = "info" | "comments" | "timeline" | "tags" | "conversations" | "sms" | "tasks" | "stats" | "ai";
+
+/**
+ * Real (not stub) lead details view — HeroUI `Drawer` sliding in from the
+ * right edge, now a tabbed panel (Phase 2c-4): Info (core fields, unchanged
+ * from the Phase 2b MVP, plus additional phone numbers) + Comments/
+ * Timeline/Tags/Conversations/SMS/Tasks/Stats, each its own component under
+ * `features/leads/components/Lead*Tab.tsx`. Every non-Info tab is mounted
+ * (and its data hook enabled) only while it's the selected tab — see the
+ * `isActive` prop threaded into each — so opening the drawer never fires
+ * eight tabs' worth of requests at once (same "fetch on demand, not on
+ * mount" rule `useConversationAudio` established). Still explicitly NOT the
+ * old frontend's 3,442-line `LeadDetailsDialog.tsx` — AI-assist/duplicate-
+ * detection/relations/real-time call guidance stay out of scope, see
+ * PROGRESS.md's Phase 2c slice list.
+ */
+export function LeadDetailsModal({
+  boardId,
+  columns,
+  initialLead,
+  onClose,
+}: {
+  boardId: string;
+  columns: LeadBoardColumn[];
+  initialLead: LeadRow;
+  onClose: () => void;
+}) {
+  const workspaceId = useSessionStore((s) => s.workspaceId);
+  const currentUser = useSessionStore((s) => s.user);
+  const operatorName = currentUser?.full_name || currentUser?.email || "Operator";
+  const detailQuery = useLeadDetailsQuery(initialLead.id);
+  const operatorsQuery = useTeamMembersQuery(workspaceId, {});
+  const moveLead = useMoveLeadMutation(boardId);
+  const assignOperator = useAssignOperatorMutation(boardId);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [soldDialogOpen, setSoldDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [tab, setTab] = useState<DetailsTab>("info");
+
+  // Seed from the card's already-cached row so the modal never opens
+  // blank; the fresh `GET /leads/:id` read replaces it once it resolves.
+  const lead = detailQuery.data ?? initialLead;
+  const deadlineDate = lead.deadline ? new Date(lead.deadline) : null;
+  const isOverdue = isLeadOverdue(lead.deadline);
+  const channels = lead.connected_channels ?? [];
+  // Only a lead still in the active pipeline can be marked sold/rejected —
+  // a data-driven check (not tab-based, since this modal is reused from
+  // every list tab except Trash) so the actions never offer to re-sell an
+  // already-sold lead or re-reject an already-rejected one.
+  const canMarkOutcome = !lead.sold && !lead.rejected && !lead.deleted_at;
+
+  const handleMoveColumn = (columnId: string) => {
+    setActionError(null);
+    moveLead.mutate({ leadId: lead.id, columnId }, { onError: (err) => setActionError(leadActionErrorMessage(err, "move")) });
+  };
+
+  const handleReassign = (operatorId: string | null) => {
+    setActionError(null);
+    assignOperator.mutate({ leadId: lead.id, operatorId }, { onError: (err) => setActionError(leadActionErrorMessage(err)) });
+  };
+
+  return (
+    <Drawer.Backdrop isOpen onOpenChange={(open) => !open && onClose()}>
+      <Drawer.Content placement="right">
+        <Drawer.Dialog className="w-full max-w-2xl">
+          <Drawer.CloseTrigger />
+          <Drawer.Header>
+            <Drawer.Heading className="flex items-center gap-2">
+              {formatLeadName(lead)}
+              {channels.length > 0 ? (
+                <span className="flex items-center gap-1">
+                  {channels.map((channel) => {
+                    const Icon = CHANNEL_ICONS[channel];
+                    return Icon ? (
+                      <Icon key={channel} className="size-3.5 text-foreground/40" aria-label={channel} />
+                    ) : null;
+                  })}
+                </span>
+              ) : null}
+            </Drawer.Heading>
+          </Drawer.Header>
+          <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(key as DetailsTab)}>
+            <Tabs.List className="mx-6 mb-1 gap-0.5 overflow-x-auto rounded-lg border border-black/[0.08] p-0.5 dark:border-white/[0.12]">
+              {(
+                [
+                  ["info", "Info"],
+                  ["comments", "Comments"],
+                  ["timeline", "Timeline"],
+                  ["tags", "Tags"],
+                  ["conversations", "Conversations"],
+                  ["sms", "SMS"],
+                  ["tasks", "Tasks"],
+                  ["stats", "Stats"],
+                  ["ai", "AI Assist"],
+                ] as const
+              ).map(([id, label]) => (
+                <Tabs.Tab key={id} id={id} className="data-[selected=true]:text-accent-soft-foreground">
+                  {label}
+                  <Tabs.Indicator className="bg-accent-soft" />
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+
+            <Drawer.Body className="flex flex-col gap-4">
+              {detailQuery.isError ? <ErrorState error={detailQuery.error} onRetry={() => detailQuery.refetch()} /> : null}
+              {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
+
+              {tab !== "info" ? null : (
+                <>
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-foreground/50">Phone</dt>
+                <dd className="font-mono text-foreground">{lead.phone_number || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-foreground/50">Email</dt>
+                <dd className="text-foreground">{lead.email || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-foreground/50">Created</dt>
+                <dd className="text-foreground">{new Date(lead.created_at).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-foreground/50">Deadline</dt>
+                <dd className={isOverdue ? "font-medium text-danger" : "text-foreground"}>
+                  {deadlineDate ? deadlineDate.toLocaleString() : "—"}
+                  {isOverdue ? " (overdue)" : ""}
+                </dd>
+              </div>
+            </dl>
+
+            <div>
+              <p className="mb-1 text-xs text-foreground/50">Column</p>
+              <Select
+                aria-label="Column"
+                value={lead.column_id}
+                isDisabled={moveLead.isPending}
+                onChange={(key) => {
+                  if (typeof key === "string") handleMoveColumn(key);
+                }}
+              >
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox items={columns.map((c) => ({ id: c.id, label: c.name }))}>
+                    {(opt) => (
+                      <ListBox.Item id={opt.id} textValue={opt.label}>
+                        {opt.label}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    )}
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs text-foreground/50">Assigned operator</p>
+              <Select
+                aria-label="Assigned operator"
+                value={lead.assigned_operator_id ?? "unassigned"}
+                isDisabled={assignOperator.isPending || operatorsQuery.isLoading}
+                onChange={(key) => {
+                  if (typeof key !== "string") return;
+                  handleReassign(key === "unassigned" ? null : key);
+                }}
+              >
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox
+                    items={[
+                      { id: "unassigned", label: "Unassigned" },
+                      ...(operatorsQuery.data ?? []).map((op) => ({
+                        id: op.user_id,
+                        label: op.full_name || op.email || op.user_id,
+                      })),
+                    ]}
+                  >
+                    {(opt) => (
+                      <ListBox.Item id={opt.id} textValue={opt.label}>
+                        {opt.label}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    )}
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
+
+            <LeadCustomFieldsSection lead={lead} />
+
+                  <LeadAdditionalPhones leadId={lead.id} />
+
+                  {detailQuery.isLoading ? <LoadingState label="Refreshing lead…" /> : null}
+                </>
+              )}
+
+              {tab === "comments" ? <LeadCommentsTab leadId={lead.id} isActive={tab === "comments"} /> : null}
+              {tab === "timeline" ? (
+                <LeadTimelineTab leadId={lead.id} workspaceId={workspaceId} isActive={tab === "timeline"} />
+              ) : null}
+              {tab === "tags" ? <LeadTagsTab leadId={lead.id} isActive={tab === "tags"} /> : null}
+              {tab === "conversations" ? (
+                <LeadConversationsTab leadId={lead.id} isActive={tab === "conversations"} />
+              ) : null}
+              {tab === "sms" ? (
+                <LeadSmsTab leadId={lead.id} isActive={tab === "sms"} lead={lead} operatorName={operatorName} />
+              ) : null}
+              {tab === "tasks" ? <LeadTasksTab leadId={lead.id} isActive={tab === "tasks"} /> : null}
+              {tab === "stats" ? (
+                <LeadStatsTab leadId={lead.id} workspaceId={workspaceId} isActive={tab === "stats"} />
+              ) : null}
+              {tab === "ai" ? (
+                <LeadAiAssistTab leadId={lead.id} leadName={formatLeadName(lead)} isActive={tab === "ai"} />
+              ) : null}
+            </Drawer.Body>
+          </Tabs>
+          <Drawer.Footer className="flex-wrap gap-2">
+            {canMarkOutcome ? (
+              <>
+                <Button variant="secondary" onPress={() => setRejectDialogOpen(true)}>
+                  Mark rejected
+                </Button>
+                <Button variant="primary" onPress={() => setSoldDialogOpen(true)}>
+                  Mark sold
+                </Button>
+              </>
+            ) : null}
+            <Button variant="secondary" onPress={onClose}>
+              Close
+            </Button>
+          </Drawer.Footer>
+        </Drawer.Dialog>
+      </Drawer.Content>
+
+      {soldDialogOpen ? (
+        <MarkSoldDialog
+          boardId={boardId}
+          lead={lead}
+          onClose={() => setSoldDialogOpen(false)}
+          onMarked={() => {
+            setSoldDialogOpen(false);
+            onClose();
+          }}
+        />
+      ) : null}
+      {rejectDialogOpen ? (
+        <MarkRejectedDialog
+          boardId={boardId}
+          lead={lead}
+          onClose={() => setRejectDialogOpen(false)}
+          onMarked={() => {
+            setRejectDialogOpen(false);
+            onClose();
+          }}
+        />
+      ) : null}
+    </Drawer.Backdrop>
+  );
+}

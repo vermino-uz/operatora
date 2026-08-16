@@ -1,0 +1,187 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/*
+ * HeroUI Pro Theme (saved design system)
+ * @see https://heroui.com/docs/react/getting-started/theming
+ */
+
+/*
+ * Vibrant Palette: Add data-vibrant-palette="true" to your <html> element
+ * for more saturated soft foreground colors (less accessible contrast).
+ * Example: <html data-vibrant-palette="true">
+ */
+
+:root,
+.light,
+.default,
+[data-theme="light"],
+[data-theme="default"] {
+  /* Theme Colors */
+  --background: oklch(97.02% 0.0109 51.11);
+  --muted: oklch(55.17% 0.0218 51.11);
+  --scrollbar: oklch(87.10% 0.0109 51.11);
+  --surface-secondary: oklch(95.24% 0.0163 51.11);
+  --surface-tertiary: oklch(93.73% 0.0163 51.11);
+  --default: oklch(94.00% 0.0109 51.11);
+  --accent: oklch(63.75% 0.1659 51.11);
+  --success: oklch(71.53% 0.1705 122.20);
+  --warning: oklch(74.03% 0.1028 46.74);
+  --danger: oklch(58.31% 0.1960 356.87);
+  --field-border: oklch(90.00% 0.0109 51.11);
+  --border: oklch(90.00% 0.0109 51.11);
+  --separator: oklch(92.00% 0.0109 51.11);
+
+  /* Border Radius */
+  --radius: 0.75rem;
+  --field-radius: 1rem;
+
+  /* Border Width */
+  --border-width-field: 0.7px;
+  --field-border-width: 0.7px;
+
+  /* Spacing */
+  --spacing: 0.28125rem;
+
+  /* Letter Spacing */
+  --tracking-tighter: -0.01em;
+  --tracking-tight: 0.015em;
+  --tracking-normal: 0.04em;
+  --tracking-wide: 0.065em;
+  --tracking-wider: 0.09em;
+  --tracking-widest: 0.14em;
+
+  /* Misc */
+  --skeleton-animation: shimmer;
+
+  /* Font Sizes */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(1.2 / 0.8125);
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: calc(1.5 / 0.9375);
+  --text-base: 1.0625rem;
+  --text-base--line-height: calc(1.8 / 1.0625);
+  --text-lg: 1.25rem;
+  --text-lg--line-height: calc(2.1 / 1.25);
+  --text-xl: 1.4375rem;
+  --text-xl--line-height: calc(2.1 / 1.4375);
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: calc(2.4 / 1.625);
+  --text-3xl: 2rem;
+  --text-3xl--line-height: calc(2.7 / 2);
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: calc(3 / 2.5);
+  --text-5xl: 3.25rem;
+  --text-5xl--line-height: 1.2;
+  --text-6xl: 4rem;
+  --text-6xl--line-height: 1.2;
+  --text-7xl: 5rem;
+  --text-7xl--line-height: 1.2;
+  --text-8xl: 6.75rem;
+  --text-8xl--line-height: 1.2;
+  --text-9xl: 9rem;
+  --text-9xl--line-height: 1.2;
+}
+
+.dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+  /* Theme Colors */
+  --background: oklch(12.00% 0.0109 51.11);
+  --muted: oklch(70.50% 0.0218 51.11);
+  --scrollbar: oklch(70.50% 0.0109 51.11);
+  --surface: oklch(21.03% 0.0218 51.11);
+  --surface-secondary: oklch(25.70% 0.0163 51.11);
+  --surface-secondary-foreground: oklch(25.70% 0.0000 51.11);
+  --surface-tertiary: oklch(27.21% 0.0163 51.11);
+  --surface-tertiary-foreground: oklch(27.21% 0.0000 51.11);
+  --overlay: oklch(21.03% 0.0218 51.11);
+  --default: oklch(27.40% 0.0109 51.11);
+  --accent: oklch(63.75% 0.1659 51.11);
+  --success: oklch(71.53% 0.1705 122.20);
+  --warning: oklch(74.03% 0.1028 46.74);
+  --danger: oklch(58.31% 0.1960 356.87);
+  --field-background: oklch(21.03% 0.0218 51.11);
+  --field-placeholder: oklch(70.50% 0.0000 51.11);
+  --field-border: oklch(28.00% 0.0109 51.11);
+  --segment: oklch(39.64% 0.0109 51.11);
+  --border: oklch(28.00% 0.0109 51.11);
+  --separator: oklch(25.00% 0.0109 51.11);
+}
+
+/* Minimal markdown content styling for AI Chat message bodies
+ * (src/features/chat/components/{MessageBubble,StreamingBubble}.tsx).
+ * No typography plugin (`@tailwindcss/typography`) is installed — rather
+ * than pull in a whole plugin for a handful of tags, this scopes just the
+ * spacing markdown output actually needs. */
+.chat-markdown :where(p, ul, ol, pre, blockquote, table) {
+  margin-block: 0.5em;
+}
+.chat-markdown :where(p, ul, ol, blockquote):first-child {
+  margin-top: 0;
+}
+.chat-markdown :where(p, ul, ol, blockquote):last-child {
+  margin-bottom: 0;
+}
+.chat-markdown :where(h1, h2, h3, h4) {
+  margin-block: 0.75em 0.35em;
+  font-weight: 600;
+}
+.chat-markdown h1 {
+  font-size: 1.15em;
+}
+.chat-markdown h2 {
+  font-size: 1.08em;
+}
+.chat-markdown :where(ul, ol) {
+  padding-inline-start: 1.25em;
+}
+.chat-markdown ul {
+  list-style: disc;
+}
+.chat-markdown ol {
+  list-style: decimal;
+}
+.chat-markdown code {
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+.chat-markdown pre {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  padding: 0.75em 1em;
+}
+.chat-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.chat-markdown blockquote {
+  border-inline-start: 2px solid currentColor;
+  opacity: 0.8;
+  padding-inline-start: 0.75em;
+}
+.chat-markdown a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-markdown table {
+  border-collapse: collapse;
+}
+.chat-markdown :where(th, td) {
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  padding: 0.35em 0.6em;
+}
