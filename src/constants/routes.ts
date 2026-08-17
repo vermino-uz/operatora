@@ -27,5 +27,10 @@ export const ROUTES = {
    * `app/google-calendar-callback/page.tsx`). */
   googleSheetsCallback: "/google-sheets-callback",
   googleCalendarCallback: "/google-calendar-callback",
+  /** Standalone Meta OAuth landing page for the Ads "own" billing-mode
+   * connect flow — see `app/ads-callback/page.tsx`. Always a full-page
+   * redirect (never a popup, unlike Instagram), same outside-`(protected)`
+   * reasoning as the callbacks above. */
+  adsCallback: "/ads-callback",
   ...sitemapRoutes,
 } as const;
