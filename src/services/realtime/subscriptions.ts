@@ -207,3 +207,121 @@ export function subscribeToLeadBoardUpdates(
     socket.emit("unsubscribe", { topic });
   };
 }
+
+/**
+ * Fifth+ realtime-subscriptions entries — the Messages feature (Telegram/
+ * Instagram/SMS customer inbox + internal Team Chat). Unlike every entry
+ * above, Telegram/Instagram/SMS(Eskiz) do NOT go through the generic
+ * `RealtimeGateway`'s `workspace:{id}` topic/`channel:{topic}` envelope —
+ * each has its own dedicated NestJS gateway class (`TelegramGateway`/
+ * `InstagramGateway`/`EskizGateway`) bound to the same default socket.io
+ * namespace (`/`) as the generic gateway, each auto-joining the same
+ * `workspace:{workspaceId}` room on connection and emitting its own raw,
+ * unprefixed event names carrying the full row directly (confirmed by
+ * reading all three gateway classes — this is a real, intentional backend
+ * difference, not something to work around). Because the join happens
+ * automatically per-connection (not per explicit topic-subscribe like the
+ * generic gateway), these helpers only need `.on(eventName, ...)` on the
+ * already-connected shared socket — no `subscribe`/`unsubscribe` emit.
+ * They hand the raw row straight to a caller-supplied handler (which
+ * patches the relevant React Query cache directly) rather than forcing a
+ * refetch, mirroring the old frontend's own behavior of applying these
+ * payloads straight to local state.
+ */
+export function subscribeToTelegramEvents(handlers: {
+  onNewMessage?: (row: Record<string, unknown>) => void;
+  onChatUpdated?: (row: Record<string, unknown>) => void;
+}): () => void {
+  const socket = getSocket();
+  connectSocket();
+  const onMsg = (row: Record<string, unknown>) => handlers.onNewMessage?.(row);
+  const onChat = (row: Record<string, unknown>) => handlers.onChatUpdated?.(row);
+  socket.on("telegram:new-message", onMsg);
+  socket.on("telegram:chat-updated", onChat);
+  return () => {
+    socket.off("telegram:new-message", onMsg);
+    socket.off("telegram:chat-updated", onChat);
+  };
+}
+
+export function subscribeToInstagramEvents(handlers: {
+  onNewMessage?: (row: Record<string, unknown>) => void;
+  onConversationUpdated?: (row: Record<string, unknown>) => void;
+}): () => void {
+  const socket = getSocket();
+  connectSocket();
+  const onMsg = (row: Record<string, unknown>) => handlers.onNewMessage?.(row);
+  const onConv = (row: Record<string, unknown>) => handlers.onConversationUpdated?.(row);
+  socket.on("instagram:new-message", onMsg);
+  socket.on("instagram:conversation-updated", onConv);
+  return () => {
+    socket.off("instagram:new-message", onMsg);
+    socket.off("instagram:conversation-updated", onConv);
+  };
+}
+
+/**
+ * `EskizGateway.emitNewMessage`/`emitMessageStatusUpdated` — room-scoped
+ * like Telegram/Instagram above (NOT the unscoped, all-clients
+ * `SmsRealtimeGateway.emit('sms:new_inbound', …)` used by the older,
+ * unrelated generic `/sms` module — the active SMS channel panel
+ * (`EskizChannelPanel.tsx`) only ever listens to `eskiz:*`, confirmed by
+ * reading it directly, so that's the only one wired here).
+ */
+export function subscribeToEskizEvents(handlers: {
+  onNewMessage?: (row: Record<string, unknown>) => void;
+  onStatusUpdated?: (row: Record<string, unknown>) => void;
+}): () => void {
+  const socket = getSocket();
+  connectSocket();
+  const onMsg = (row: Record<string, unknown>) => handlers.onNewMessage?.(row);
+  const onStatus = (row: Record<string, unknown>) => handlers.onStatusUpdated?.(row);
+  socket.on("eskiz:new-message", onMsg);
+  socket.on("eskiz:message-status-updated", onStatus);
+  return () => {
+    socket.off("eskiz:new-message", onMsg);
+    socket.off("eskiz:message-status-updated", onStatus);
+  };
+}
+
+/**
+ * Team Chat — unlike the three above, `GroupChatService` emits through the
+ * *generic* `RealtimeService` on a `messages:{workspaceId}` topic (already
+ * in `RealtimeGateway`'s `ALLOWED_PREFIXES`), `{event, table: 'messages'}`
+ * envelope — same shape as every other generic-gateway entry in this file,
+ * so this one follows the standard subscribe/invalidate pattern instead of
+ * the raw-event pattern above.
+ */
+export function subscribeToTeamChatMessages(
+  workspaceId: string,
+  onChanged: () => void,
+): () => void {
+  const socket = getSocket();
+  connectSocket();
+
+  const topic = `messages:${workspaceId}`;
+  const wireEvent = `channel:${topic}`;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const scheduleChanged = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      onChanged();
+    }, INVALIDATE_DEBOUNCE_MS);
+  };
+
+  const handlePayload = (payload: RealtimeChannelPayload) => {
+    if (payload?.table !== "messages") return;
+    scheduleChanged();
+  };
+
+  socket.emit("subscribe", { topic });
+  socket.on(wireEvent, handlePayload);
+
+  return () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    socket.off(wireEvent, handlePayload);
+    socket.emit("unsubscribe", { topic });
+  };
+}

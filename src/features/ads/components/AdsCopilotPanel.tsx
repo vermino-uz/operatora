@@ -43,16 +43,19 @@ export function AdsCopilotPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  if (!open) return null;
-
   const submit = (q: string) => {
     setInput("");
     void ask(q, campaigns, isSample);
   };
 
   return (
-    <aside className="flex h-full w-[340px] shrink-0 flex-col border-l border-black/[0.08] dark:border-white/[0.12]">
-      <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-black/[0.08] px-4 dark:border-white/[0.12]">
+    <aside
+      aria-hidden={!open}
+      className={`flex h-full shrink-0 flex-col overflow-hidden border-black/[0.08] transition-[width] duration-200 ease-out dark:border-white/[0.12] ${
+        open ? "w-[340px] border-l" : "w-0 border-l-0"
+      }`}
+    >
+      <div className="flex h-[52px] w-[340px] shrink-0 items-center gap-2 border-b border-black/[0.08] px-4 dark:border-white/[0.12]">
         <Sparkles className="h-4 w-4 text-accent" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">Ads Copilot</p>
@@ -68,7 +71,7 @@ export function AdsCopilotPanel({
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} className="w-[340px] flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
         {messages.length === 0 && !streamingText ? (
           <div className="flex flex-col gap-1.5">
             <p className="mb-1 text-xs text-foreground/60">Try asking:</p>
@@ -112,7 +115,7 @@ export function AdsCopilotPanel({
         </div>
       </div>
 
-      <div className="flex shrink-0 gap-2 border-t border-black/[0.08] p-3 dark:border-white/[0.12]">
+      <div className="flex w-[340px] shrink-0 gap-2 border-t border-black/[0.08] p-3 dark:border-white/[0.12]">
         <input
           type="text"
           value={input}
