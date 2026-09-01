@@ -15,6 +15,8 @@ import type { LeadBoardShareSettings } from "@/features/leads/types";
 export interface LeadsBoardOption {
   id: string;
   name: string;
+  /** Per-board opt-in: fill empty lead custom fields from call summaries. */
+  ai_autofill_custom_fields_from_calls?: boolean;
 }
 
 export interface LeadsBoardColumnOption {
@@ -52,6 +54,15 @@ export const leadsBoardsApi = {
     return apiFetch<LeadsBoardOption>(`/boards/${encodeURIComponent(boardId)}`, {
       method: "PATCH",
       body: { name },
+    });
+  },
+
+  /** `PATCH /boards/:id` — toggles call-summary custom-field autofill for
+   * this board (`CallCustomFieldAutofillService`, conversations pipeline). */
+  async updateCallAutofill(boardId: string, enabled: boolean): Promise<LeadsBoardOption> {
+    return apiFetch<LeadsBoardOption>(`/boards/${encodeURIComponent(boardId)}`, {
+      method: "PATCH",
+      body: { ai_autofill_custom_fields_from_calls: enabled },
     });
   },
 

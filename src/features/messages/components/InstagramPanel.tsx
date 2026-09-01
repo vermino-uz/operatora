@@ -13,6 +13,10 @@ import { MessageBubbleRow } from "@/features/messages/components/MessageBubbleRo
 import { TextComposer } from "@/features/messages/components/TextComposer";
 import { LinkedLeadChip } from "@/features/messages/components/LinkedLeadChip";
 import { LinkLeadDialog } from "@/features/messages/components/LinkLeadDialog";
+import {
+  instagramMediaFallbackLabel,
+  resolveInstagramMessageMedia,
+} from "@/features/messages/lib/instagramMedia";
 import { instagramChatName } from "@/features/messages/types";
 import {
   useInstagramChatsQuery,
@@ -115,15 +119,25 @@ export function InstagramPanel({ onUnreadChange }: { onUnreadChange?: (count: nu
               ) : (messagesQuery.data ?? []).length === 0 ? (
                 <EmptyState title="No messages yet" description="Send the first message below." />
               ) : (
-                (messagesQuery.data ?? []).map((message) => (
-                  <MessageBubbleRow
-                    key={message.id}
-                    content={message.text_content || "(non-text message — not shown, see Messages scope notes)"}
-                    direction={message.direction}
-                    timestamp={message.created_at}
-                    status={message.status}
-                  />
-                ))
+                (messagesQuery.data ?? []).map((message) => {
+                  const caption = (message.text_content || "").trim();
+                  const media = resolveInstagramMessageMedia(message);
+                  const hasMedia = Boolean(media.url && media.kind);
+                  const fallback = hasMedia ? "" : instagramMediaFallbackLabel(message.message_type);
+                  return (
+                    <MessageBubbleRow
+                      key={message.id}
+                      content={caption || fallback}
+                      direction={message.direction}
+                      timestamp={message.created_at}
+                      status={message.status}
+                      mediaUrl={hasMedia ? media.url : null}
+                      mediaKind={hasMedia ? media.kind : null}
+                      mediaLayout={media.layout}
+                      mediaPosterUrl={hasMedia ? media.posterUrl : null}
+                    />
+                  );
+                })
               )}
             </div>
             <TextComposer

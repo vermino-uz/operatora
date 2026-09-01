@@ -19,13 +19,22 @@
  * backend capabilities, all deliberately out of scope for this pass —
  * each is individually larger than most whole features already built in
  * this app): Telegram "linked user account" mode (contacts, start-chat-by-
- * username, history sync, last-seen), media/sticker/GIF messages, message
- * edit/delete/forward/reactions, multi-select bulk actions, the entire
- * "agentic" AI auto-reply/automation subsystem (11 old-frontend files,
- * ~4,600 lines), canned responses, Instagram groups/automations, WhatsApp
- * (old frontend itself only ever shipped a "coming soon" placeholder for
- * it — reproduced as such here, not a fabricated fourth channel).
+ * username, history sync, last-seen), sending/composing media (photo/
+ * video/document/sticker/GIF uploads), the entire "agentic" AI auto-reply/
+ * automation subsystem (11 old-frontend files, ~4,600 lines), canned
+ * responses, Instagram groups/automations, WhatsApp (old frontend itself
+ * only ever shipped a "coming soon" placeholder for it — reproduced as
+ * such here, not a fabricated fourth channel).
+ *
+ * Telegram's per-message context menu (copy/reply/forward/react/edit/
+ * delete/multi-select/save-image) — originally cut from this same list —
+ * was later brought to full parity with the old frontend's
+ * `TelegramMessageContextMenu.tsx`/`TelegramChannelPanel.tsx`; see
+ * PROGRESS.md's dated "Messages — Telegram message context menu" entry.
  */
+
+import { env } from "@/config/env";
+import { resolveTelegramMessageFileId } from "@/features/messages/lib/telegramMedia";
 
 export type ChannelKey = "telegram" | "instagram" | "sms" | "whatsapp" | "team";
 
@@ -35,6 +44,8 @@ export type ChannelKey = "telegram" | "instagram" | "sms" | "whatsapp" | "team";
 
 export interface TelegramChat {
   id: string;
+  /** Telegram's own numeric chat/peer id — required for `t.me/c/…` message links. */
+  telegram_chat_id?: number | null;
   display_name?: string | null;
   system_name?: string | null;
   first_name?: string | null;
@@ -48,6 +59,18 @@ export interface TelegramChat {
   assigned_to?: string | null;
   linked_lead_id?: string | null;
   conversation_closed_at?: string | null;
+  avatar_checked_at?: string | null;
+  /** Row is `select('*')`d server-side (`telegram-chats.service.ts`) — these
+   * two decide which bot token `telegram-media` proxies media through for
+   * this chat's messages (see `telegramMessageMediaUrl` below). */
+  bot_integration_id?: string | null;
+  business_connection_id?: string | null;
+  /** Present on chats ingested via the linked user account (userbot). */
+  user_session_id?: string | null;
+  /** True when the peer is a Telegram bot (still stored as chat_type private). */
+  is_bot?: boolean | null;
+  /** Telegram Chat Folder ids this chat belongs to (user-account mode). */
+  folder_ids?: number[] | null;
 }
 
 export interface TelegramMessage {
@@ -59,6 +82,39 @@ export interface TelegramMessage {
   status: "received" | "pending" | "sent" | "failed" | string;
   created_at: string;
   sender_id?: string | null;
+  /** Telegram's own numeric message id (distinct from `id`, our row uuid) —
+   * required to reply-to, react to, or resolve media for a message; not
+   * every row has one yet (e.g. an optimistic bubble mid-flight). */
+  telegram_message_id?: number | null;
+  /** Resolved Telegram `file_id` for photo/sticker/etc. messages — present
+   * once the row has media (`telegram-meassages.service.ts` backfills this
+   * from `telegram_data` when absent). Powers `telegramMessageMediaUrl`. */
+  file_id?: string | null;
+  /** Per-message override of which bot proxies this message's media —
+   * falls back to the chat's own `bot_integration_id` when absent. */
+  bot_integration_id?: string | null;
+  /** Set by `POST :id/edit` (outbound text messages only). */
+  is_edited?: boolean;
+  reply_to_message_id?: number | null;
+  metadata?: {
+    reply_preview?: { author: string; text: string } | null;
+    /** The operator's own emoji reaction on this message (`POST :id/reaction`). */
+    operator_reaction?: string | null;
+  } | null;
+  /** Raw Bot API / TDLib payload — used to backfill kind/file_id client-side. */
+  telegram_data?: Record<string, unknown> | null;
+}
+
+/** Forum topic in a Telegram supergroup (TDLib linked account only). */
+export interface TelegramForumTopic {
+  forum_topic_id: number;
+  name: string;
+  icon_color?: number | null;
+  is_general?: boolean;
+  is_closed?: boolean;
+  is_pinned?: boolean;
+  unread_count?: number;
+  last_message_date?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +213,86 @@ export function telegramChatName(chat: TelegramChat): string {
     chat.system_name?.trim() ||
     "Unknown"
   );
+}
+
+/** `GET /telegram-media/chat-avatar/:chatId` — public (no auth), the
+ * backend resolves/caches the Telegram file_id server-side and streams the
+ * image bytes directly, so this is usable straight as an `<img src>`. 404s
+ * (no photo, or a bot-mode chat with no resolvable file) fall back to
+ * initials wherever this is rendered — same "one cache-busted URL, browser
+ * handles the 404" pattern as the old frontend's own `chatAvatarUrl`. */
+export function telegramChatAvatarUrl(chat: TelegramChat): string {
+  const bust = chat.avatar_checked_at ? `?v=${new Date(chat.avatar_checked_at).getTime()}` : "";
+  return `${env.apiBaseUrl}/telegram-media/chat-avatar/${encodeURIComponent(chat.id)}${bust}`;
+}
+
+/** `GET /telegram-media/:fileId?bot_id=|business=1` or
+ * `/telegram-media/account/:chatId/:fileId` for user-account chats — public
+ * proxy-download (no auth). Returns `null` when the message has no resolvable
+ * `file_id`. */
+export function telegramMessageMediaUrl(
+  message: TelegramMessage,
+  chat: TelegramChat,
+  fileIdOverride?: string | null,
+): string | null {
+  const fileId = fileIdOverride ?? resolveTelegramMessageFileId(message);
+  if (!fileId) return null;
+  const isAccountChat = chat.source === "user_account" || Boolean(chat.user_session_id);
+  if (isAccountChat) {
+    return `${env.apiBaseUrl}/telegram-media/account/${encodeURIComponent(chat.id)}/${encodeURIComponent(fileId)}`;
+  }
+  if (chat.business_connection_id) {
+    return `${env.apiBaseUrl}/telegram-media/${encodeURIComponent(fileId)}?business=1`;
+  }
+  const botId = message.bot_integration_id || chat.bot_integration_id;
+  if (botId) {
+    return `${env.apiBaseUrl}/telegram-media/${encodeURIComponent(fileId)}?bot_id=${encodeURIComponent(botId)}`;
+  }
+  return `${env.apiBaseUrl}/telegram-media/${encodeURIComponent(fileId)}?business=1`;
+}
+
+export function isTelegramAccountChat(chat: TelegramChat): boolean {
+  return chat.source === "user_account" || Boolean(chat.user_session_id);
+}
+
+/** 1:1 human chats only — excludes bots, groups, supergroups, and channels. */
+export function isTelegramPrivateChat(chat: TelegramChat): boolean {
+  if (chat.is_bot) return false;
+  const type = chat.chat_type;
+  if (!type) return true; // legacy rows without chat_type default to private
+  return type === "private";
+}
+
+export function isTelegramBotChat(chat: TelegramChat): boolean {
+  return chat.is_bot === true || chat.chat_type === "bot";
+}
+
+export function isTelegramGroupChat(chat: TelegramChat): boolean {
+  return chat.chat_type === "group" || chat.chat_type === "supergroup";
+}
+
+export function isTelegramChannelChat(chat: TelegramChat): boolean {
+  return chat.chat_type === "channel";
+}
+
+export function telegramAccountAvatarUrl(workspaceId: string, avatarCheckedAt?: string | null): string {
+  const bust = avatarCheckedAt ? `?v=${new Date(avatarCheckedAt).getTime()}` : "";
+  return `${env.apiBaseUrl}/telegram-media/account-avatar/${encodeURIComponent(workspaceId)}${bust}`;
+}
+
+/** Human-readable last-seen line for a private user-account chat. */
+export function formatTelegramLastSeen(data: { status?: string | null; last_online_date?: number | null } | null): string | null {
+  if (!data) return null;
+  if (data.status === "online") return "online";
+  if (data.status === "recently") return "last seen recently";
+  if (data.last_online_date) {
+    const d = new Date(data.last_online_date * 1000);
+    if (!Number.isNaN(d.getTime())) {
+      return `last seen ${d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+    }
+  }
+  if (data.status === "hidden") return "last seen hidden";
+  return null;
 }
 
 export function instagramChatName(chat: InstagramChat): string {

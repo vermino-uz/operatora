@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "@heroui/react";
+import { Gear } from "@gravity-ui/icons";
 
 import { useSessionStore } from "@/state/session-store";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -8,6 +10,7 @@ import { useConversationsQuery } from "@/features/conversations/hooks/useConvers
 import { ConversationFilters } from "@/features/conversations/components/ConversationFilters";
 import { ConversationsTable } from "@/features/conversations/components/ConversationsTable";
 import { ConversationDetailPanel } from "@/features/conversations/components/ConversationDetailPanel";
+import { ConversationsSettingsDialog } from "@/features/conversations/components/ConversationsSettingsDialog";
 import type { Conversation, ConversationListFilters } from "@/features/conversations/types";
 
 const PAGE_SIZE = 50;
@@ -31,6 +34,7 @@ export default function ConversationsPage() {
   const [filters, setFilters] = useState<ConversationListFilters>({});
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Conversation | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const params = useMemo(
     () => ({ ...filters, offset, limit: PAGE_SIZE }),
@@ -74,6 +78,21 @@ export default function ConversationsPage() {
   return (
     <div className="-m-6 flex h-[calc(100%+3rem)] min-h-0">
       <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${selected ? "hidden xl:flex" : ""}`}>
+        <div className="flex items-center justify-between gap-3 border-b border-divider px-6 py-3">
+          <div>
+            <h1 className="text-base font-semibold text-foreground">Conversations</h1>
+            <p className="text-sm text-foreground/60">Call recordings, AI summaries, and lead updates.</p>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            aria-label="Conversation settings"
+            onPress={() => setSettingsOpen(true)}
+          >
+            <Gear className="size-4" aria-hidden="true" />
+            Settings
+          </Button>
+        </div>
         <ConversationFilters filters={filters} onChange={handleFiltersChange} operators={operators} statuses={statuses} />
         <ConversationsTable
           query={query}
@@ -89,6 +108,10 @@ export default function ConversationsPage() {
         <div className="flex min-h-0 w-full shrink-0 flex-col border-l border-divider bg-background xl:w-[720px]">
           <ConversationDetailPanel key={selected.id} conversationId={selected.id} onClose={() => setSelected(null)} />
         </div>
+      ) : null}
+
+      {settingsOpen && workspaceId ? (
+        <ConversationsSettingsDialog workspaceId={workspaceId} onClose={() => setSettingsOpen(false)} />
       ) : null}
     </div>
   );
