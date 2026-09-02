@@ -16,6 +16,8 @@ import type { InstagramMessage } from "@/features/messages/types";
 const CHATS_KEY = ["instagram-chats"] as const;
 const MESSAGES_KEY = (chatId: string) => ["instagram-messages", chatId] as const;
 const INVALIDATE_DEBOUNCE_MS = 800;
+const WORKSPACE_USER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function useInstagramChatsQuery() {
   return useQuery({
@@ -37,10 +39,15 @@ export function useInstagramMessagesQuery(chatId: string | null) {
 /** Optimistic send — see `useTelegramSendMutation`'s doc comment for why
  * (the send response body is empty, so the composer had nothing to
  * append without this and the operator's own message never appeared). */
-export function useInstagramSendMutation(chatId: string | null) {
+export function useInstagramSendMutation(chatId: string | null, senderId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (text: string) => instagramConversationsApi.send({ conversationId: chatId as string, text }),
+    mutationFn: (text: string) =>
+      instagramConversationsApi.send({
+        conversationId: chatId as string,
+        text,
+        senderId,
+      }),
     onMutate: (text) => {
       if (!chatId) return {};
       const tempId = `optimistic-${crypto.randomUUID()}`;
@@ -51,6 +58,7 @@ export function useInstagramSendMutation(chatId: string | null) {
         text_content: text,
         status: "pending",
         created_at: new Date().toISOString(),
+        sender_id: senderId ?? null,
       };
       queryClient.setQueryData<InstagramMessage[]>(MESSAGES_KEY(chatId), (prev) => (prev ? [...prev, optimistic] : [optimistic]));
       return { tempId };
@@ -123,7 +131,16 @@ export function useInstagramRealtime(
               const tempIndex = prev.findIndex((m) => m.id.startsWith("optimistic-") && m.text_content === message.text_content);
               if (tempIndex !== -1) {
                 const next = [...prev];
-                next[tempIndex] = message;
+                const prevSender = next[tempIndex]?.sender_id;
+                next[tempIndex] = {
+                  ...message,
+                  sender_id:
+                    prevSender &&
+                    WORKSPACE_USER_ID_RE.test(String(prevSender)) &&
+                    (!message.sender_id || !WORKSPACE_USER_ID_RE.test(String(message.sender_id)))
+                      ? prevSender
+                      : message.sender_id ?? prevSender,
+                };
                 return next;
               }
             }

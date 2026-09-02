@@ -33,10 +33,19 @@ export const instagramConversationsApi = {
   /** `POST /instagram/send-message` — text only. Requires `instagram`/
    * `create` RBAC permission server-side. Response is
    * `{ success, message }`. */
-  async send(payload: { conversationId: string; text: string }): Promise<InstagramMessage | undefined> {
+  async send(payload: {
+    conversationId: string;
+    text: string;
+    senderId?: string | null;
+  }): Promise<InstagramMessage | undefined> {
+    const body: Record<string, unknown> = {
+      conversation_id: payload.conversationId,
+      text: payload.text,
+    };
+    if (payload.senderId) body.sender_id = payload.senderId;
     const data = await apiFetch<{ success?: boolean; message?: InstagramMessage }>(`/instagram/send-message`, {
       method: "POST",
-      body: { conversation_id: payload.conversationId, text: payload.text },
+      body,
     });
     return data?.message;
   },

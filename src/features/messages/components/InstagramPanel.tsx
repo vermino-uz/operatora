@@ -21,7 +21,8 @@ import {
 } from "@/features/messages/lib/instagramMedia";
 import { DaySeparator, groupMessagesByDay } from "@/features/messages/lib/messageDayGroups";
 import { patchInstagramChatInCache } from "@/features/messages/lib/instagramChatRealtime";
-import { pickAvatarColor } from "@/features/messages/lib/telegramSender";
+import { pickAvatarColor, resolveOutboundOperatorMark } from "@/features/messages/lib/telegramSender";
+import { useSenderProfileMap } from "@/features/messages/hooks/useSenderProfileMap";
 import { instagramChatName } from "@/features/messages/types";
 import type { InstagramChat } from "@/features/messages/types";
 import {
@@ -75,6 +76,7 @@ export function InstagramPanel({
 }) {
   const queryClient = useQueryClient();
   const workspaceId = useSessionStore((s) => s.workspaceId);
+  const currentUserId = useSessionStore((s) => s.user?.id);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -168,8 +170,16 @@ export function InstagramPanel({
     () => groupMessagesByDay(messages, (m) => m.created_at),
     [messages],
   );
+  const outboundSenderIds = useMemo(
+    () =>
+      messages
+        .filter((m) => m.direction === "outbound" && m.sender_id && m.metadata?.ai_generated !== true)
+        .map((m) => m.sender_id as string),
+    [messages],
+  );
+  const senderProfiles = useSenderProfileMap(outboundSenderIds, workspaceId ?? undefined);
 
-  const sendMutation = useInstagramSendMutation(selectedChatId);
+  const sendMutation = useInstagramSendMutation(selectedChatId, currentUserId);
   const linkLeadMutation = useInstagramLinkLeadMutation();
 
   useInstagramRealtime(true, selectedChatId, {
@@ -432,6 +442,10 @@ export function InstagramPanel({
                         const hasMedia = Boolean(media.kind && (media.url || (media.kind === "link" && media.linkLabel)));
                         const fallback = hasMedia ? "" : instagramMediaFallbackLabel(message.message_type);
                         const isAgentMsg = message.direction === "outbound" && message.metadata?.ai_generated === true;
+                        const operatorMark =
+                          message.direction === "outbound" && !isAgentMsg
+                            ? resolveOutboundOperatorMark(message.sender_id ?? undefined, senderProfiles)
+                            : {};
                         return (
                           <MessageBubbleRow
                             key={message.id}
@@ -444,6 +458,8 @@ export function InstagramPanel({
                             mediaLayout={media.layout}
                             mediaPosterUrl={hasMedia ? media.posterUrl : null}
                             mediaLinkLabel={media.linkLabel}
+                            senderName={isAgentMsg ? undefined : operatorMark.senderName}
+                            outboundAvatar={isAgentMsg ? undefined : operatorMark.outboundAvatar}
                             agentGenerated={isAgentMsg}
                             agentVoiceDurationSec={message.metadata?.voice_duration_sec ?? null}
                           />
