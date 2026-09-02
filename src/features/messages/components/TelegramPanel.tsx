@@ -1917,6 +1917,7 @@ export function TelegramPanel({
               <AgentCopilotPanel
                 chatId={selectedChat.id}
                 chatName={telegramChatName(selectedChat)}
+                workspaceId={workspaceId}
                 agentEnabled={agenticEnabled}
                 paused={!!selectedChat.agentic_paused}
                 targeted={isAgentTargeted(selectedChat)}

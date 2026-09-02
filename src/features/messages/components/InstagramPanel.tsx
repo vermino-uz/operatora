@@ -9,6 +9,7 @@ import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useSessionStore } from "@/state/session-store";
 import { ConversationListItem } from "@/features/messages/components/ConversationListItem";
 import { MessageBubbleRow } from "@/features/messages/components/MessageBubbleRow";
 import { TextComposer } from "@/features/messages/components/TextComposer";
@@ -73,6 +74,7 @@ export function InstagramPanel({
   onChatOpenChange?: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const workspaceId = useSessionStore((s) => s.workspaceId);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -533,6 +535,7 @@ export function InstagramPanel({
               <AgentCopilotPanel
                 chatId={selectedChat.id}
                 chatName={instagramChatName(selectedChat)}
+                workspaceId={workspaceId}
                 channel={AGENTIC_CHANNEL}
                 agentEnabled={agenticEnabled}
                 paused={!!selectedChat.agentic_paused}

@@ -107,7 +107,7 @@ export function LeadsListTable({ query, onOpenLead, page, pageSize, onPageChange
   const to = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 z-10 bg-background">

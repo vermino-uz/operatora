@@ -143,7 +143,17 @@ export default function LeadsPage() {
   }
 
   const boardDataQuery = useLeadBoardQuery(boardId, filters);
-  const leadsListQuery = useLeadsListQuery(activeTab === "active" && viewMode === "list" ? boardId : null, listPage, filters);
+  const visibleColumns = useMemo(
+    () => (boardDataQuery.data?.columns ?? []).filter((c) => !c.is_hidden),
+    [boardDataQuery.data],
+  );
+  const listColumnIds = useMemo(() => visibleColumns.map((c) => c.id), [visibleColumns]);
+  const leadsListQuery = useLeadsListQuery(
+    activeTab === "active" && viewMode === "list" ? boardId : null,
+    listPage,
+    filters,
+    listColumnIds,
+  );
   const operatorOptions = (operatorsQuery.data ?? []).map((op) => ({
     id: op.user_id,
     label: op.full_name || op.email || op.user_id,
@@ -153,11 +163,6 @@ export default function LeadsPage() {
     if (!workspaceId || !boardId) return;
     return subscribeToLeadBoardUpdates(queryClient, workspaceId, boardId);
   }, [queryClient, workspaceId, boardId]);
-
-  const visibleColumns = useMemo(
-    () => (boardDataQuery.data?.columns ?? []).filter((c) => !c.is_hidden),
-    [boardDataQuery.data],
-  );
 
   if (!workspaceId) {
     return (
@@ -185,7 +190,7 @@ export default function LeadsPage() {
   const filtersSupported = activeTab === "active" || activeTab === "rejected" || activeTab === "archived";
 
   return (
-    <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 flex-col md:-m-6 md:h-[calc(100%+3rem)]">
+    <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 flex-col overflow-hidden md:-m-6 md:h-[calc(100%+3rem)]">
       <div className="flex flex-col gap-2 border-b border-black/[0.08] px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3 dark:border-white/[0.12]">
         <h1 className="text-lg font-semibold text-foreground">Leads</h1>
 
@@ -412,7 +417,7 @@ export default function LeadsPage() {
         <BulkActionsBar boardId={boardId} selection={selection} columns={visibleColumns} operators={operatorOptions} />
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-hidden p-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
         {activeTab === "active" && viewMode === "list" ? (
           <LeadsListTable
             query={leadsListQuery}

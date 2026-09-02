@@ -154,12 +154,13 @@ export const leadsApi = {
    * this pass — see PROGRESS.md. */
   async getLeadsList(
     boardId: string,
-    params: { page?: number; pageSize?: number } = {},
+    params: { page?: number; pageSize?: number; selectedColumns?: string[] } = {},
     filters?: LeadFilters,
   ): Promise<{ data: LeadRow[]; count: number }> {
     const qs = new URLSearchParams({ boardId });
     if (params.page) qs.set("page", String(params.page));
     if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+    if (params.selectedColumns?.length) qs.set("selectedColumns", JSON.stringify(params.selectedColumns));
     if (filters) qs.set("filters", JSON.stringify(filtersToLeadListFilters(filters)));
     return apiFetch<{ data: LeadRow[]; count: number }>(`/leads-list?${qs.toString()}`);
   },
