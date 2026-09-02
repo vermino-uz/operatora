@@ -201,12 +201,10 @@ export function AppSidebar() {
   // nav icons below it every time). Hovering the rail peeks it open as an
   // overlay; nothing above the nav icons ever changes shape now, so nothing
   // shifts.
+  // Hover peeks the rail open; the account panel can expand inline while
+  // hovered. Leaving the sidebar closes both so the rail doesn't stay stuck
+  // open until the account menu is dismissed manually.
   const [isHovering, setIsHovering] = useState(false);
-  // The account menu is an inline-expanding panel now (not a floating
-  // popover — see below), so keeping the sidebar expanded while it's open
-  // is just "OR it into peekExpanded", no portal/hover-boundary problem to
-  // work around like the old Dropdown-based version had. Press-only (not
-  // hover) — it stays open until pressed again, regardless of the cursor.
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const peekExpanded = isHovering || isProfileOpen;
 
@@ -257,7 +255,10 @@ export function AppSidebar() {
       <nav
         aria-label="Primary"
         onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
+        onMouseLeave={() => {
+          setIsHovering(false);
+          setIsProfileOpen(false);
+        }}
         className={`absolute inset-y-0 left-0 z-20 flex h-full flex-col items-stretch justify-between border-r border-black/[0.06] bg-background/60 px-2 py-4 backdrop-blur-md transition-[width] duration-200 dark:border-white/10 ${
           peekExpanded ? "w-60 shadow-xl" : "w-[4.5rem]"
         }`}
