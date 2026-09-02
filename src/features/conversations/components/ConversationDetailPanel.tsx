@@ -1,15 +1,31 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Button, Chip } from "@heroui/react";
-import { Link as LinkIcon, Xmark } from "@gravity-ui/icons";
+import { useQuery } from "@tanstack/react-query";
+import { Button, Chip, Dropdown } from "@heroui/react";
+import {
+  ArrowLeft,
+  CircleCheck,
+  CircleExclamation,
+  Clock,
+  FileText,
+  Flag,
+  Handset,
+  Bulb,
+  Link as LinkIcon,
+  Persons,
+  Sparkles,
+  Star,
+  StarFill,
+  Ellipsis,
+} from "@gravity-ui/icons";
+
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { useConversationQuery } from "@/features/conversations/hooks/useConversationQuery";
 import { useSessionStore } from "@/state/session-store";
-import { ConversationAudioPlayer } from "@/features/conversations/components/ConversationAudioPlayer";
-import { ConversationAssistantPanel } from "@/features/conversations/components/ConversationAssistantPanel";
+import { ConversationInlineAudioPlayer } from "@/features/conversations/components/ConversationInlineAudioPlayer";
+import { ConversationAssistantDialog } from "@/features/conversations/components/ConversationAssistantDialog";
 import { LinkLeadDialog } from "@/features/conversations/components/LinkLeadDialog";
 import { getLinkedLeadId } from "@/services/api/leadConversationLinks";
 import { leadSearchApi } from "@/services/api/leadSearch";
@@ -18,91 +34,62 @@ import {
   parseTranscript,
   type Conversation,
 } from "@/features/conversations/types";
+import {
+  formatBytes,
+  formatConversationTime,
+  formatPhoneForDisplay,
+  getConversationClientDisplayName,
+  getInitial,
+} from "@/features/conversations/utils/conversationDisplay";
 
 export interface ConversationDetailPanelProps {
   conversationId: string;
-  onClose: () => void;
+  onBack?: () => void;
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionHeader({
+  icon: Icon,
+  title,
+  tone = "default",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  tone?: "default" | "success" | "warning" | "danger";
+}) {
+  const toneCls =
+    tone === "success"
+      ? "text-success"
+      : tone === "warning"
+        ? "text-warning"
+        : tone === "danger"
+          ? "text-danger"
+          : "text-foreground";
   return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function TagList({ items }: { items: string[] }) {
-  if (items.length === 0) return <p className="text-sm text-muted">None</p>;
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map((item, i) => (
-        <Chip key={`${item}-${i}`} size="sm" variant="soft">
-          {item}
-        </Chip>
-      ))}
+    <div className={`mb-3 flex items-center gap-2 ${toneCls}`}>
+      <Icon className="size-4" aria-hidden="true" />
+      <h4 className="text-[13px] font-semibold uppercase tracking-wider">{title}</h4>
     </div>
   );
 }
 
-function Transcript({ transcript }: { transcript: unknown }) {
-  const parsed = parseTranscript(transcript);
+function DetailSection({ children }: { children: React.ReactNode }) {
+  return <section className="rounded-xl border border-divider bg-background p-5">{children}</section>;
+}
 
-  if (parsed.kind === "empty") {
-    return <p className="text-sm text-muted">No transcript available.</p>;
-  }
-
-  if (parsed.kind === "raw") {
-    return <pre className="whitespace-pre-wrap rounded-xl bg-[var(--default)] p-3 text-xs text-foreground">{parsed.text}</pre>;
-  }
-
+function EmptyDetail() {
   return (
-    <div className="flex flex-col gap-2">
-      {parsed.turns.map((turn, i) => (
-        <div
-          key={i}
-          className={`flex flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm ${
-            turn.side === "operator"
-              ? "self-start bg-[var(--default)] text-foreground"
-              : "self-end bg-accent/10 text-foreground"
-          } max-w-[85%]`}
-        >
-          <div className="flex items-center gap-2 text-xs font-medium text-muted">
-            <span>{turn.speaker}</span>
-            {turn.timestamp ? <span>{turn.timestamp}</span> : null}
-          </div>
-          <p className="whitespace-pre-wrap">{turn.text}</p>
-        </div>
-      ))}
+    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+      <div className="mb-5 flex size-20 items-center justify-center rounded-full bg-[var(--default)]">
+        <Handset className="size-9 text-muted" aria-hidden="true" />
+      </div>
+      <h3 className="text-[18px] font-semibold text-foreground">Select a conversation</h3>
+      <p className="mt-1.5 max-w-[360px] text-[14px] text-muted">
+        Choose a call from the list to view the recording, transcript, and AI analysis.
+      </p>
     </div>
   );
 }
 
-function EvaluationCriteria({ raw }: { raw: unknown }) {
-  const entries = parseEvaluationCriteria(raw);
-  if (entries.length === 0) return <p className="text-sm text-muted">No evaluation criteria recorded.</p>;
-  return (
-    <div className="flex flex-col gap-2">
-      {entries.map((entry, i) => (
-        <div key={`${entry.name}-${i}`} className="rounded-xl bg-[var(--default)] px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium text-foreground">{entry.name}</span>
-            {entry.score !== undefined ? (
-              <span className="text-sm font-semibold text-foreground">{entry.score}</span>
-            ) : null}
-          </div>
-          {entry.feedback ? <p className="mt-1 text-xs text-muted">{entry.feedback}</p> : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Currently-linked-lead chip (or a "Link lead" button when none is
- * linked) — Phase 2c-12. `conversation.entities` is already present on the
- * detail row (no extra fetch); the lead's display name is resolved via the
- * real `lead-search` by-ids endpoint (same one `LinkLeadDialog` uses). */
 function LinkedLeadChip({ conversation, onOpenDialog }: { conversation: Conversation; onOpenDialog: () => void }) {
   const linkedLeadId = getLinkedLeadId(conversation.entities);
   const leadQuery = useQuery({
@@ -114,98 +101,294 @@ function LinkedLeadChip({ conversation, onOpenDialog }: { conversation: Conversa
 
   if (!linkedLeadId) {
     return (
-      <Button size="sm" variant="secondary" onPress={onOpenDialog}>
-        <LinkIcon className="size-3.5" aria-hidden="true" />
+      <Dropdown.Item id="link-lead" onAction={onOpenDialog}>
+        <LinkIcon className="size-4" />
         Link lead
-      </Button>
+      </Dropdown.Item>
     );
   }
 
   return (
-    <Chip size="sm" variant="soft" color="accent" className="cursor-pointer" onClick={onOpenDialog}>
+    <Dropdown.Item id="link-lead" onAction={onOpenDialog}>
+      <LinkIcon className="size-4" />
       Lead: {leadQuery.data?.[0]?.name ?? "…"}
-    </Chip>
+    </Dropdown.Item>
   );
 }
 
-function DetailContent({ conversation, workspaceId }: { conversation: Conversation; workspaceId: string | null }) {
+function DetailBody({ conversation, workspaceId }: { conversation: Conversation; workspaceId: string | null }) {
+  const [showAi, setShowAi] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const evaluationEntries = parseEvaluationCriteria(conversation.evaluation_criteria);
+  const displayName =
+    getConversationClientDisplayName(conversation) ||
+    formatPhoneForDisplay(conversation.client_phone) ||
+    "Unknown";
+  const fileName = conversation.audio_file_path?.split("/").pop() || "recording";
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 xl:grid-cols-[1fr_360px]">
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <LinkedLeadChip conversation={conversation} onOpenDialog={() => setShowLinkDialog(true)} />
-          {conversation.status ? <Chip size="sm">{conversation.status}</Chip> : null}
-          {conversation.sentiment ? (
-            <Chip size="sm" variant="soft" className="capitalize">
-              {conversation.sentiment}
-            </Chip>
-          ) : null}
-          {conversation.source ? (
-            <Chip size="sm" variant="soft" className="capitalize">
-              {conversation.source}
-            </Chip>
-          ) : null}
-          {conversation.ai_score !== null && conversation.ai_score !== undefined ? (
-            <Chip size="sm" color={conversation.ai_score >= 80 ? "success" : conversation.ai_score >= 50 ? "warning" : "danger"}>
-              Score {conversation.ai_score}
-            </Chip>
-          ) : null}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-start gap-4 border-b border-divider bg-background px-4 py-5 md:px-5">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent text-[18px] font-semibold text-accent-foreground">
+          {getInitial(displayName)}
         </div>
-
-        <Section title="Audio">
-          <ConversationAudioPlayer conversationId={conversation.id} hasAudio={Boolean(conversation.audio_file_path)} />
-        </Section>
-
-        {conversation.summary ? (
-          <Section title="Summary">
-            <p className="text-sm text-foreground">{conversation.summary}</p>
-          </Section>
-        ) : null}
-
-        <Section title="Key points">
-          <TagList items={conversation.key_points} />
-        </Section>
-
-        <Section title="Topics">
-          <TagList items={conversation.topics} />
-        </Section>
-
-        {conversation.disposition ? (
-          <Section title="Disposition">
-            <p className="text-sm text-foreground">{conversation.disposition}</p>
-          </Section>
-        ) : null}
-
-        <Section title="Compliance flags">
-          <TagList items={conversation.compliance_flags} />
-        </Section>
-
-        <Section title="Follow-up actions">
-          <TagList items={conversation.follow_up_actions} />
-        </Section>
-
-        <Section title="Strengths">
-          <TagList items={conversation.strengths} />
-        </Section>
-
-        <Section title="Improvements">
-          <TagList items={conversation.improvements} />
-        </Section>
-
-        <Section title="Evaluation criteria">
-          <EvaluationCriteria raw={conversation.evaluation_criteria} />
-        </Section>
-
-        <Section title="Transcript">
-          <Transcript transcript={conversation.transcript} />
-        </Section>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[18px] font-semibold text-foreground">{displayName}</h2>
+          <p className="mt-0.5 truncate text-[13px] text-muted">
+            {conversation.operator_name || "—"} · {conversation.duration || "—"} ·{" "}
+            {formatConversationTime(conversation)}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {conversation.ai_score != null && conversation.ai_score > 0 ? (
+              <div className="inline-flex h-6 items-center gap-1.5 rounded-full bg-[var(--default)] px-2.5 text-[12px] font-semibold text-foreground">
+                <StarFill className="size-3 text-warning" aria-hidden="true" />
+                {conversation.ai_score}/100
+              </div>
+            ) : null}
+            {conversation.sentiment ? (
+              <Chip size="sm" variant="soft" className="h-6 capitalize">
+                {conversation.sentiment}
+              </Chip>
+            ) : null}
+            {conversation.status ? (
+              <Chip size="sm" variant="soft" className="h-6 capitalize">
+                {conversation.status.replace(/_/g, " ")}
+              </Chip>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" onPress={() => setShowAi(true)}>
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            AI
+          </Button>
+          <Dropdown>
+            <Dropdown.Trigger
+              aria-label="More actions"
+              className="inline-flex size-9 items-center justify-center rounded-lg border border-divider bg-background text-foreground/70 transition-colors hover:bg-[var(--default)] hover:text-foreground"
+            >
+              <Ellipsis className="size-4" aria-hidden="true" />
+            </Dropdown.Trigger>
+            <Dropdown.Popover>
+              <Dropdown.Menu aria-label="Conversation actions">
+                <LinkedLeadChip conversation={conversation} onOpenDialog={() => setShowLinkDialog(true)} />
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        </div>
       </div>
 
-      <div className="min-h-0 xl:sticky xl:top-0">
-        <ConversationAssistantPanel conversation={conversation} workspaceId={workspaceId} />
+      <div className="flex-1 overflow-y-auto bg-[var(--default)] px-4 py-5 md:px-5">
+        <div className="flex w-full min-w-0 flex-col gap-5">
+          <ConversationInlineAudioPlayer
+            conversationId={conversation.id}
+            hasAudio={Boolean(conversation.audio_file_path)}
+            fileName={fileName}
+            title={displayName}
+            subtitle={conversation.operator_name || undefined}
+            durationFallback={conversation.duration}
+          />
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <DetailSection>
+              <SectionHeader icon={Persons} title="Participants" />
+              <div className="flex flex-col gap-3 text-[13px]">
+                <div>
+                  <div className="mb-0.5 text-muted">Client</div>
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    {conversation.client_phone ? (
+                      <>
+                        <Handset className="size-3.5 shrink-0" aria-hidden="true" />
+                        {formatPhoneForDisplay(conversation.client_phone)}
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-0.5 text-muted">Operator</div>
+                  <div className="font-medium text-foreground">{conversation.operator_name || "Unknown"}</div>
+                </div>
+              </div>
+            </DetailSection>
+
+            <DetailSection>
+              <SectionHeader icon={Clock} title="Timing" />
+              <div className="flex flex-col gap-3 text-[13px]">
+                <div>
+                  <div className="mb-0.5 text-muted">When</div>
+                  <div className="font-medium text-foreground">{formatConversationTime(conversation)}</div>
+                </div>
+                <div>
+                  <div className="mb-0.5 text-muted">Duration</div>
+                  <div className="font-medium text-foreground">{conversation.duration || "—"}</div>
+                </div>
+                {conversation.audio_file_size ? (
+                  <div>
+                    <div className="mb-0.5 text-muted">Audio size</div>
+                    <div className="font-medium text-foreground">{formatBytes(conversation.audio_file_size)}</div>
+                  </div>
+                ) : null}
+              </div>
+            </DetailSection>
+
+            <DetailSection>
+              <SectionHeader icon={Star} title="Scoring" />
+              <div className="flex flex-col gap-3 text-[13px]">
+                <div>
+                  <div className="mb-0.5 text-muted">AI score</div>
+                  <div className="font-semibold text-foreground">
+                    {conversation.ai_score != null ? `${conversation.ai_score}/100` : "—"}
+                  </div>
+                </div>
+                {conversation.sentiment ? (
+                  <div>
+                    <div className="mb-0.5 text-muted">Sentiment</div>
+                    <div className="font-medium capitalize text-foreground">{conversation.sentiment}</div>
+                  </div>
+                ) : null}
+                {conversation.disposition ? (
+                  <div>
+                    <div className="mb-0.5 text-muted">Disposition</div>
+                    <div className="font-medium text-foreground">{conversation.disposition}</div>
+                  </div>
+                ) : null}
+              </div>
+            </DetailSection>
+          </div>
+
+          {conversation.summary ? (
+            <DetailSection>
+              <SectionHeader icon={FileText} title="Summary" />
+              <p className="text-[14px] leading-[22px] text-foreground">{conversation.summary}</p>
+            </DetailSection>
+          ) : null}
+
+          {evaluationEntries.length > 0 ? (
+            <DetailSection>
+              <SectionHeader icon={Star} title="Evaluation breakdown" />
+              <div className="flex flex-col gap-3">
+                {evaluationEntries.map((entry, i) => (
+                  <div key={`${entry.name}-${i}`} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[13px] font-medium capitalize text-foreground">{entry.name}</span>
+                      {entry.score != null ? (
+                        <span className="text-[12px] font-semibold text-foreground">{entry.score}</span>
+                      ) : null}
+                    </div>
+                    {entry.feedback ? (
+                      <p className="text-[12px] leading-[18px] text-muted">{entry.feedback}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </DetailSection>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {(conversation.key_points ?? []).length > 0 ? (
+              <DetailSection>
+                <SectionHeader icon={Flag} title="Key points" />
+                <ul className="flex flex-col gap-2">
+                  {(conversation.key_points ?? []).map((kp, i) => (
+                    <li key={i} className="flex gap-2 text-[13px] leading-[20px] text-foreground">
+                      <span className="mt-[2px] shrink-0 text-success">●</span>
+                      <span>{kp}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
+            ) : null}
+
+            {(conversation.topics ?? []).length > 0 ? (
+              <DetailSection>
+                <SectionHeader icon={FileText} title="Topics" />
+                <div className="flex flex-wrap gap-2">
+                  {(conversation.topics ?? []).map((topic, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex h-7 items-center rounded-full bg-[var(--default)] px-3 text-[12px] font-medium text-foreground"
+                    >
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              </DetailSection>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {(conversation.strengths ?? []).length > 0 ? (
+              <DetailSection>
+                <SectionHeader icon={CircleCheck} title="Strengths" tone="success" />
+                <ul className="flex flex-col gap-2">
+                  {(conversation.strengths ?? []).map((s, i) => (
+                    <li key={i} className="flex gap-2 text-[13px] leading-[20px] text-foreground">
+                      <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden="true" />
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
+            ) : null}
+
+            {(conversation.improvements ?? []).length > 0 ? (
+              <DetailSection>
+                <SectionHeader icon={Bulb} title="Improvements" tone="warning" />
+                <ul className="flex flex-col gap-2">
+                  {(conversation.improvements ?? []).map((im, i) => (
+                    <li key={i} className="flex gap-2 text-[13px] leading-[20px] text-foreground">
+                      <Bulb className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
+                      <span>{im}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {(conversation.follow_up_actions ?? []).length > 0 ? (
+              <DetailSection>
+                <SectionHeader icon={Flag} title="Follow-up actions" />
+                <ul className="flex flex-col gap-2">
+                  {(conversation.follow_up_actions ?? []).map((a, i) => (
+                    <li key={i} className="flex gap-2 text-[13px] leading-[20px] text-foreground">
+                      <Flag className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden="true" />
+                      <span>{a}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
+            ) : null}
+
+            {(conversation.compliance_flags ?? []).length > 0 ? (
+              <DetailSection>
+                <SectionHeader icon={CircleExclamation} title="Compliance flags" tone="danger" />
+                <ul className="flex flex-col gap-2">
+                  {(conversation.compliance_flags ?? []).map((f, i) => (
+                    <li key={i} className="flex gap-2 text-[13px] leading-[20px] text-danger">
+                      <CircleExclamation className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
+            ) : null}
+          </div>
+
+          <TranscriptSection conversation={conversation} displayName={displayName} />
+        </div>
       </div>
+
+      {showAi ? (
+        <ConversationAssistantDialog
+          conversation={conversation}
+          workspaceId={workspaceId}
+          onClose={() => setShowAi(false)}
+        />
+      ) : null}
 
       {showLinkDialog ? (
         <LinkLeadDialog
@@ -218,36 +401,64 @@ function DetailContent({ conversation, workspaceId }: { conversation: Conversati
   );
 }
 
-/** Detail view (right-hand panel): header info, summary, key points,
- * topics, compliance flags, disposition, follow-up actions, evaluation
- * criteria, strengths/improvements, turn-by-turn transcript, audio
- * player, and the "ask about this conversation" AI assistant. */
-export function ConversationDetailPanel({ conversationId, onClose }: ConversationDetailPanelProps) {
+function TranscriptSection({ conversation, displayName }: { conversation: Conversation; displayName: string }) {
+  const parsed = parseTranscript(conversation.transcript);
+  if (parsed.kind === "empty") return null;
+
+  return (
+    <DetailSection>
+      <SectionHeader icon={FileText} title="Transcript" />
+      <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1">
+        {parsed.kind === "raw" ? (
+          <pre className="whitespace-pre-wrap text-[13px] leading-[20px] text-foreground">{parsed.text}</pre>
+        ) : (
+          parsed.turns.map((turn, i) => {
+            const isLeft = turn.side === "operator";
+            const speakerLabel = isLeft ? conversation.operator_name || "Operator" : displayName;
+            return (
+              <div key={i} className={`flex ${isLeft ? "justify-start" : "justify-end"}`}>
+                <div
+                  className={`max-w-[82%] rounded-2xl px-3.5 py-2 ${
+                    isLeft
+                      ? "rounded-bl-md border border-divider bg-background text-foreground"
+                      : "rounded-br-md bg-accent text-accent-foreground"
+                  }`}
+                >
+                  <div className="mb-0.5 text-[11px] opacity-70">
+                    {speakerLabel}
+                    {turn.timestamp ? <span className="ml-2">{turn.timestamp}</span> : null}
+                  </div>
+                  <div className="whitespace-pre-wrap break-words text-[13px] leading-[20px]">{turn.text}</div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </DetailSection>
+  );
+}
+
+export function ConversationDetailPanel({ conversationId, onBack }: ConversationDetailPanelProps) {
   const workspaceId = useSessionStore((s) => s.workspaceId);
   const query = useConversationQuery(conversationId);
 
+  if (!conversationId) return <EmptyDetail />;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-start justify-between gap-4 border-b border-divider px-6 py-4">
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-foreground">
-            {query.data?.client_name || "Conversation"}
-          </p>
-          <p className="truncate text-sm text-muted">
-            {query.data?.operator_name ? `Operator: ${query.data.operator_name}` : ""}
-            {query.data?.conversation_date ? ` · ${query.data.conversation_date} ${query.data.conversation_time ?? ""}` : ""}
-            {query.data?.duration ? ` · ${query.data.duration}` : ""}
-          </p>
+      {onBack ? (
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-divider bg-background px-4 md:hidden">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-[14px] font-medium text-foreground/70 hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Back
+          </button>
         </div>
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-muted hover:bg-[var(--default)] hover:text-foreground"
-        >
-          <Xmark className="size-4" aria-hidden="true" />
-        </button>
-      </header>
+      ) : null}
 
       {query.isLoading ? (
         <LoadingState label="Loading conversation…" className="flex-1" />
@@ -256,8 +467,10 @@ export function ConversationDetailPanel({ conversationId, onClose }: Conversatio
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
         </div>
       ) : query.data ? (
-        <DetailContent conversation={query.data} workspaceId={workspaceId} />
-      ) : null}
+        <DetailBody conversation={query.data} workspaceId={workspaceId} />
+      ) : (
+        <EmptyDetail />
+      )}
     </div>
   );
 }

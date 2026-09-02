@@ -49,7 +49,7 @@ export const conversationsApi = {
 // through `apiFetch` (JSON-only). Mirrors the auth-attach + single-flight
 // refresh pattern `services/api/chat.ts` uses for its SSE streaming path.
 
-async function authorizedBinaryRequest(path: string): Promise<Response> {
+async function authorizedBinaryRequest(path: string, opts: { throwOn404?: boolean } = {}): Promise<Response> {
   const attempt = async (token: string | null): Promise<Response> => {
     const headers = new Headers();
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -61,13 +61,40 @@ async function authorizedBinaryRequest(path: string): Promise<Response> {
     const refreshed = await performTokenRefresh();
     if (refreshed) response = await attempt(refreshed);
   }
-  if (!response.ok) {
+  if (!response.ok && !(response.status === 404 && opts.throwOn404 === false)) {
     throw new ApiError({
       statusCode: response.status,
-      message: `Could not load audio (${response.status}).`,
+      message:
+        response.status === 404
+          ? "Audio recording not found for this conversation."
+          : `Could not load audio (${response.status}).`,
     });
   }
   return response;
+}
+
+/** Primary `GET /api/play-back/:id`, with `GET /api/audio-upload/:id` as the
+ * documented fallback when play-back 404s — same sequence the old frontend's
+ * `GlobalAudioContext` and `downloadConversationAudio` use. */
+async function fetchConversationAudioResponse(
+  conversationId: string,
+  opts: { download?: boolean } = {},
+): Promise<Response> {
+  const downloadQs = opts.download ? "?download=1" : "";
+  const playBack = await authorizedBinaryRequest(`/play-back/${conversationId}${downloadQs}`, {
+    throwOn404: false,
+  });
+  if (playBack.ok) return playBack;
+
+  const audioUpload = await authorizedBinaryRequest(`/audio-upload/${conversationId}`, {
+    throwOn404: false,
+  });
+  if (audioUpload.ok) return audioUpload;
+
+  throw new ApiError({
+    statusCode: playBack.status === 404 && audioUpload.status === 404 ? 404 : audioUpload.status || playBack.status,
+    message: "Audio recording not found for this conversation.",
+  });
 }
 
 /** No `Range` header support is confirmed on this endpoint — scrubbing on
@@ -80,8 +107,7 @@ export async function getConversationAudioBlob(
   conversationId: string,
   opts: { download?: boolean } = {},
 ): Promise<Blob> {
-  const qs = opts.download ? "?download=1" : "";
-  const response = await authorizedBinaryRequest(`/play-back/${conversationId}${qs}`);
+  const response = await fetchConversationAudioResponse(conversationId, opts);
   return response.blob();
 }
 
