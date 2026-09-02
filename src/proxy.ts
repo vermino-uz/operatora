@@ -22,9 +22,9 @@ import { ROUTES } from "@/constants/routes";
  * list is generated instead of hand-kept in sync.
  */
 const PROTECTED_PREFIXES = [...new Set(Object.values(ROUTES))].filter(
-  (path) => path !== ROUTES.login,
+  (path) => path !== ROUTES.login && path !== ROUTES.signup,
 );
-const AUTH_PREFIXES = [ROUTES.login];
+const AUTH_PREFIXES = [ROUTES.login, ROUTES.signup];
 
 export function proxy(request: NextRequest) {
   const hasAuthHint = request.cookies.get("auth-hint")?.value === "1";

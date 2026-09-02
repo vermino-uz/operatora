@@ -18,11 +18,21 @@ export type AppRole =
   | "marketing_agent"
   | "super_admin";
 
+/** Operator account type — wire values from `profiles.account_type`. */
+export type AccountType = "team" | "independent";
+
 export interface AuthUser {
   id: string;
   email: string | null;
   phone?: string | null;
   full_name?: string | null;
+  account_type?: AccountType | null;
+  profile?: {
+    full_name?: string | null;
+    avatar_url?: string | null;
+    internal_number?: string | null;
+    account_type?: AccountType | null;
+  } | null;
   [key: string]: unknown;
 }
 

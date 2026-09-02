@@ -8,6 +8,7 @@ import { useSessionStore } from "@/state/session-store";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { AppShell } from "@/components/layout/AppShell";
+import { ROUTES } from "@/constants/routes";
 
 /**
  * Enforces auth for everything under this route group. `proxy.ts`
@@ -25,7 +26,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.replace("/login");
+      router.replace(ROUTES.login);
     }
   }, [status, router]);
 

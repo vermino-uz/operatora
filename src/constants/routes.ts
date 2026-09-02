@@ -12,6 +12,7 @@ const sitemapRoutes = Object.fromEntries(
 
 export const ROUTES = {
   login: "/login",
+  signup: "/signup",
   admin: "/admin",
   doc: "/doc",
   settings: "/settings",
