@@ -185,21 +185,18 @@ export default function LeadsPage() {
   const filtersSupported = activeTab === "active" || activeTab === "rejected" || activeTab === "archived";
 
   return (
-    <div className="-m-6 flex h-[calc(100%+3rem)] min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-black/[0.08] px-4 py-3 dark:border-white/[0.12]">
+    <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 flex-col md:-m-6 md:h-[calc(100%+3rem)]">
+      <div className="flex flex-col gap-2 border-b border-black/[0.08] px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3 dark:border-white/[0.12]">
         <h1 className="text-lg font-semibold text-foreground">Leads</h1>
 
-        <div className="flex items-center gap-2">
-          {/* Always shown (Phase 2c-5 polish — previously only rendered when
-              a workspace already had >1 board, so there was no way to
-              discover board creation at all). */}
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5">
           <Select
             aria-label="Board"
             value={boardId}
             onChange={(key) => {
               if (typeof key === "string") setSelectedBoardId(key);
             }}
-            className="w-56"
+            className="w-[min(100%,9rem)] shrink-0 sm:w-56"
           >
             <Select.Trigger>
               <Select.Value />

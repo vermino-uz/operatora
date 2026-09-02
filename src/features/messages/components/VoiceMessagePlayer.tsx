@@ -59,6 +59,14 @@ export function VoiceMessagePlayer({ src, direction }: VoiceMessagePlayerProps) 
     else audio.pause();
   };
 
+  const onPlayKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      toggle();
+    }
+  };
+
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
@@ -74,19 +82,48 @@ export function VoiceMessagePlayer({ src, direction }: VoiceMessagePlayerProps) 
 
   return (
     <div className="flex w-[min(240px,100%)] items-center gap-2.5 py-0.5">
-      <button
-        type="button"
-        onClick={toggle}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggle();
+        }}
+        onKeyDown={onPlayKeyDown}
         aria-label={playing ? "Pause" : "Play"}
-        className={`flex size-9 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-90 ${
+        className={`flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-opacity hover:opacity-90 ${
           isOutbound ? "bg-black/15 text-accent-foreground" : "bg-accent text-accent-foreground"
         }`}
       >
         {playing ? <Pause className="size-4" aria-hidden="true" /> : <Play className="ml-0.5 size-4" aria-hidden="true" />}
-      </button>
+      </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div
-          onClick={seek}
+          role="slider"
+          tabIndex={0}
+          aria-label="Seek voice message"
+          aria-valuemin={0}
+          aria-valuemax={duration || 0}
+          aria-valuenow={currentTime}
+          onClick={(e) => {
+            e.stopPropagation();
+            seek(e);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              e.stopPropagation();
+              const audio = audioRef.current;
+              if (!audio || !duration) return;
+              audio.currentTime = Math.min(duration, audio.currentTime + 5);
+            } else if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              e.stopPropagation();
+              const audio = audioRef.current;
+              if (!audio) return;
+              audio.currentTime = Math.max(0, audio.currentTime - 5);
+            }
+          }}
           className={`relative h-1 cursor-pointer rounded-full ${isOutbound ? "bg-black/15" : "bg-foreground/15"}`}
         >
           <div

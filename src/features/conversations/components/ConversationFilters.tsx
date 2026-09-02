@@ -48,8 +48,8 @@ export function ConversationFilters({ filters, onChange, operators, statuses }: 
   );
 
   return (
-    <div className="flex flex-wrap items-end gap-3 border-b border-divider px-6 py-4">
-      <div className="relative w-64">
+    <div className="flex flex-wrap items-end gap-3 border-b border-divider px-3 py-3 md:px-6 md:py-4">
+      <div className="relative w-full min-w-[12rem] sm:w-64">
         <Search
           className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted"
           aria-hidden="true"
@@ -75,7 +75,7 @@ export function ConversationFilters({ filters, onChange, operators, statuses }: 
             }
           }}
           variant="secondary"
-          className="w-40"
+          className="w-full min-w-[8rem] sm:w-40"
         >
           <Select.Trigger>
             <Select.Value />
@@ -109,7 +109,7 @@ export function ConversationFilters({ filters, onChange, operators, statuses }: 
             }
           }}
           variant="secondary"
-          className="w-44"
+          className="w-full min-w-[8rem] sm:w-44"
         >
           <Select.Trigger>
             <Select.Value />

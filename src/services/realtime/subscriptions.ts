@@ -230,33 +230,90 @@ export function subscribeToLeadBoardUpdates(
  */
 export function subscribeToTelegramEvents(handlers: {
   onNewMessage?: (row: Record<string, unknown>) => void;
+  onMessageUpdated?: (row: Record<string, unknown>) => void;
+  onMessageDeleted?: (row: Record<string, unknown>) => void;
+  onReadSync?: (row: Record<string, unknown>) => void;
   onChatUpdated?: (row: Record<string, unknown>) => void;
+  onAgenticDraft?: () => void;
+  onAgenticSettings?: () => void;
 }): () => void {
   const socket = getSocket();
   connectSocket();
   const onMsg = (row: Record<string, unknown>) => handlers.onNewMessage?.(row);
+  const onUpdated = (row: Record<string, unknown>) => handlers.onMessageUpdated?.(row);
+  const onDeleted = (row: Record<string, unknown>) => handlers.onMessageDeleted?.(row);
+  const onRead = (row: Record<string, unknown>) => handlers.onReadSync?.(row);
   const onChat = (row: Record<string, unknown>) => handlers.onChatUpdated?.(row);
+  const onDraft = () => handlers.onAgenticDraft?.();
+  const onSettings = () => handlers.onAgenticSettings?.();
   socket.on("telegram:new-message", onMsg);
+  socket.on("telegram:message-updated", onUpdated);
+  socket.on("telegram:message-deleted", onDeleted);
+  socket.on("telegram:read-sync", onRead);
   socket.on("telegram:chat-updated", onChat);
+  socket.on("telegram:agentic-draft", onDraft);
+  socket.on("telegram:agentic-settings", onSettings);
   return () => {
     socket.off("telegram:new-message", onMsg);
+    socket.off("telegram:message-updated", onUpdated);
+    socket.off("telegram:message-deleted", onDeleted);
+    socket.off("telegram:read-sync", onRead);
     socket.off("telegram:chat-updated", onChat);
+    socket.off("telegram:agentic-draft", onDraft);
+    socket.off("telegram:agentic-settings", onSettings);
   };
 }
 
 export function subscribeToInstagramEvents(handlers: {
   onNewMessage?: (row: Record<string, unknown>) => void;
   onConversationUpdated?: (row: Record<string, unknown>) => void;
+  onAgenticDraft?: () => void;
+  onAgenticSettings?: (row: Record<string, unknown>) => void;
 }): () => void {
   const socket = getSocket();
   connectSocket();
   const onMsg = (row: Record<string, unknown>) => handlers.onNewMessage?.(row);
   const onConv = (row: Record<string, unknown>) => handlers.onConversationUpdated?.(row);
+  const onDraft = () => handlers.onAgenticDraft?.();
+  const onSettings = (row: Record<string, unknown>) => handlers.onAgenticSettings?.(row);
   socket.on("instagram:new-message", onMsg);
   socket.on("instagram:conversation-updated", onConv);
+  socket.on("instagram:agentic-draft", onDraft);
+  socket.on("instagram:agentic-settings", onSettings);
   return () => {
     socket.off("instagram:new-message", onMsg);
     socket.off("instagram:conversation-updated", onConv);
+    socket.off("instagram:agentic-draft", onDraft);
+    socket.off("instagram:agentic-settings", onSettings);
+  };
+}
+
+/** Fires when a lead's phone is bound — used for Telegram inbox toast when the open chat's lead updates. */
+export function subscribeToLeadPhoneBound(
+  workspaceId: string,
+  onBound: (payload: { leadId: string; phoneNumber?: string }) => void,
+): () => void {
+  const socket = getSocket();
+  connectSocket();
+  const topic = `workspace:${workspaceId}`;
+  const wireEvent = `channel:${topic}`;
+
+  const handlePayload = (payload: RealtimeChannelPayload) => {
+    if (payload?.table !== "leads" || payload.event !== "lead_phone_bound") return;
+    const row = payload.new as Record<string, unknown> | undefined;
+    const leadId = typeof row?.id === "string" ? row.id : undefined;
+    if (!leadId) return;
+    onBound({
+      leadId,
+      phoneNumber: typeof row?.phone_number === "string" ? row.phone_number : undefined,
+    });
+  };
+
+  socket.emit("subscribe", { topic });
+  socket.on(wireEvent, handlePayload);
+  return () => {
+    socket.off(wireEvent, handlePayload);
+    socket.emit("unsubscribe", { topic });
   };
 }
 

@@ -19,6 +19,7 @@ export interface ChatThreadListProps {
   activeThreadId: string | null;
   onSelect: (threadId: string) => void;
   onNewThread: () => void;
+  className?: string;
 }
 
 /** The chat feature's own thread-history sidebar — a second column inside
@@ -37,6 +38,7 @@ export function ChatThreadList({
   activeThreadId,
   onSelect,
   onNewThread,
+  className,
 }: ChatThreadListProps) {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 250);
@@ -49,7 +51,9 @@ export function ChatThreadList({
   }, [threads, debouncedSearch]);
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col bg-background shadow-[inset_-1px_0_0_rgba(0,0,0,0.08)] dark:shadow-[inset_-1px_0_0_rgba(255,255,255,0.1)]">
+    <aside
+      className={`h-full shrink-0 flex-col bg-background shadow-[inset_-1px_0_0_rgba(0,0,0,0.08)] dark:shadow-[inset_-1px_0_0_rgba(255,255,255,0.1)] ${className ?? "flex w-full md:w-60"}`}
+    >
       <div className="flex flex-col gap-2 px-4 pb-2 pt-4">
         <Button size="sm" fullWidth onPress={onNewThread} data-testid="chat-new-thread">
           <Plus className="size-4" aria-hidden="true" />

@@ -20,6 +20,7 @@ export interface TelegramPanelSettingsMenuProps {
   onNewChat: () => void;
   onSync: () => void;
   onDisconnect: () => void;
+  onAutoLeadCreate?: () => void;
 }
 
 function accountSubtitle(session: TelegramAccountSession | null | undefined): string | null {
@@ -40,6 +41,7 @@ export function TelegramPanelSettingsMenu({
   onNewChat,
   onSync,
   onDisconnect,
+  onAutoLeadCreate,
 }: TelegramPanelSettingsMenuProps) {
   const router = useRouter();
   const accountName =
@@ -99,6 +101,15 @@ export function TelegramPanelSettingsMenu({
               <Dropdown.Item id="link" onAction={onLinkAccount}>
                 <Person className="size-3.5" aria-hidden="true" />
                 Link Telegram account
+              </Dropdown.Item>
+              <Separator className="my-1" />
+            </>
+          ) : null}
+
+          {onAutoLeadCreate ? (
+            <>
+              <Dropdown.Item id="auto-lead" onAction={onAutoLeadCreate}>
+                Auto-create leads
               </Dropdown.Item>
               <Separator className="my-1" />
             </>

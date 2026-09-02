@@ -34,7 +34,6 @@
  */
 
 import { env } from "@/config/env";
-import { resolveTelegramMessageFileId } from "@/features/messages/lib/telegramMedia";
 
 export type ChannelKey = "telegram" | "instagram" | "sms" | "whatsapp" | "team";
 
@@ -46,11 +45,14 @@ export interface TelegramChat {
   id: string;
   /** Telegram's own numeric chat/peer id — required for `t.me/c/…` message links. */
   telegram_chat_id?: number | null;
+  /** Private-chat peer user id (linked-account / business rows). */
+  telegram_user_id?: number | null;
   display_name?: string | null;
   system_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   username?: string | null;
+  phone?: string | null;
   chat_type?: string | null;
   source?: string | null;
   unread_count?: number;
@@ -67,6 +69,11 @@ export interface TelegramChat {
   business_connection_id?: string | null;
   /** Present on chats ingested via the linked user account (userbot). */
   user_session_id?: string | null;
+  /** Operator took over from the AI agent — agent won't auto-reply until resumed. */
+  agentic_paused?: boolean | null;
+  /** Agent escalated — operator should open this chat. */
+  needs_attention?: boolean | null;
+  unseen_escalations?: number | null;
   /** True when the peer is a Telegram bot (still stored as chat_type private). */
   is_bot?: boolean | null;
   /** Telegram Chat Folder ids this chat belongs to (user-account mode). */
@@ -79,6 +86,8 @@ export interface TelegramMessage {
   direction: "inbound" | "outbound";
   text_content?: string | null;
   message_kind?: string | null;
+  /** Backend `media_type` column — helps classify documents as video when `message_kind` is stale. */
+  media_type?: string | null;
   status: "received" | "pending" | "sent" | "failed" | string;
   created_at: string;
   sender_id?: string | null;
@@ -100,9 +109,14 @@ export interface TelegramMessage {
     reply_preview?: { author: string; text: string } | null;
     /** The operator's own emoji reaction on this message (`POST :id/reaction`). */
     operator_reaction?: string | null;
+    /** True when the AI agent sent this outbound message. */
+    ai_generated?: boolean | null;
+    voice_duration_sec?: number | null;
   } | null;
   /** Raw Bot API / TDLib payload — used to backfill kind/file_id client-side. */
   telegram_data?: Record<string, unknown> | null;
+  /** Optimistic local blob URL while an outbound media send is in flight. */
+  preview_url?: string | null;
 }
 
 /** Forum topic in a Telegram supergroup (TDLib linked account only). */
@@ -132,6 +146,9 @@ export interface InstagramChat {
   assigned_to?: string | null;
   linked_lead_id?: string | null;
   conversation_closed_at?: string | null;
+  agentic_paused?: boolean | null;
+  needs_attention?: boolean | null;
+  unseen_escalations?: number | null;
 }
 
 export interface InstagramMessage {
@@ -141,9 +158,16 @@ export interface InstagramMessage {
   text_content?: string | null;
   message_type?: string | null;
   media_url?: string | null;
+  /** Optimistic local preview while a send is in flight (old frontend pattern). */
+  preview_url?: string | null;
+  media_type?: string | null;
   status: "received" | "pending" | "sent" | "failed" | string;
   created_at: string;
   sender_id?: string | null;
+  metadata?: {
+    ai_generated?: boolean | null;
+    voice_duration_sec?: number | null;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -226,30 +250,7 @@ export function telegramChatAvatarUrl(chat: TelegramChat): string {
   return `${env.apiBaseUrl}/telegram-media/chat-avatar/${encodeURIComponent(chat.id)}${bust}`;
 }
 
-/** `GET /telegram-media/:fileId?bot_id=|business=1` or
- * `/telegram-media/account/:chatId/:fileId` for user-account chats — public
- * proxy-download (no auth). Returns `null` when the message has no resolvable
- * `file_id`. */
-export function telegramMessageMediaUrl(
-  message: TelegramMessage,
-  chat: TelegramChat,
-  fileIdOverride?: string | null,
-): string | null {
-  const fileId = fileIdOverride ?? resolveTelegramMessageFileId(message);
-  if (!fileId) return null;
-  const isAccountChat = chat.source === "user_account" || Boolean(chat.user_session_id);
-  if (isAccountChat) {
-    return `${env.apiBaseUrl}/telegram-media/account/${encodeURIComponent(chat.id)}/${encodeURIComponent(fileId)}`;
-  }
-  if (chat.business_connection_id) {
-    return `${env.apiBaseUrl}/telegram-media/${encodeURIComponent(fileId)}?business=1`;
-  }
-  const botId = message.bot_integration_id || chat.bot_integration_id;
-  if (botId) {
-    return `${env.apiBaseUrl}/telegram-media/${encodeURIComponent(fileId)}?bot_id=${encodeURIComponent(botId)}`;
-  }
-  return `${env.apiBaseUrl}/telegram-media/${encodeURIComponent(fileId)}?business=1`;
-}
+export { telegramMessageMediaUrl } from "@/features/messages/lib/telegramMedia";
 
 export function isTelegramAccountChat(chat: TelegramChat): boolean {
   return chat.source === "user_account" || Boolean(chat.user_session_id);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "@gravity-ui/icons";
+import { ListBox, Select } from "@heroui/react";
 
 import { SETTINGS_SITEMAP, settingsNavTestId } from "@/constants/settings-sitemap";
 
@@ -34,7 +35,7 @@ export function SettingsNav({ activeKey, onSelect }: SettingsNavProps) {
   }
 
   return (
-    <nav aria-label="Settings" className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto py-1 pr-2">
+    <nav aria-label="Settings" className="hidden w-64 shrink-0 flex-col gap-1 overflow-y-auto py-1 pr-2 md:flex">
       {SETTINGS_SITEMAP.map((group) => {
         const isCollapsed = collapsedGroups.has(group.key);
         return (
@@ -94,5 +95,45 @@ export function SettingsNav({ activeKey, onSelect }: SettingsNavProps) {
         );
       })}
     </nav>
+  );
+}
+
+/** Compact section picker for phone-width viewports — desktop uses `SettingsNav`. */
+export function SettingsNavMobile({ activeKey, onSelect }: SettingsNavProps) {
+  const sections = SETTINGS_SITEMAP.flatMap((group) =>
+    group.sections.map((section) => ({
+      ...section,
+      groupLabel: group.label,
+    })),
+  );
+  const active = sections.find((s) => s.key === activeKey);
+
+  return (
+    <div className="md:hidden">
+      <Select
+        aria-label="Settings section"
+        value={activeKey}
+        onChange={(key) => {
+          if (typeof key === "string") onSelect(key);
+        }}
+        className="w-full"
+      >
+        <Select.Trigger>
+          <Select.Value>{active?.label ?? "Settings"}</Select.Value>
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox items={sections.map((s) => ({ id: s.key, label: s.label, group: s.groupLabel }))}>
+            {(item) => (
+              <ListBox.Item id={item.id} textValue={item.label}>
+                <span className="block text-[10px] text-foreground/40">{item.group}</span>
+                {item.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            )}
+          </ListBox>
+        </Select.Popover>
+      </Select>
+    </div>
   );
 }

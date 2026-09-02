@@ -57,6 +57,15 @@ export interface TelegramChatLastSeen {
   last_online_date?: number | null;
 }
 
+export interface TelegramGroupMember {
+  id: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  username?: string | null;
+  is_bot?: boolean;
+  status?: string;
+}
+
 /** `/telegram-account/*` — linked user-account (userbot) layer, traced against
  * `telegram-account.controller.ts`. Distinct from bot integration settings
  * (`/telegram-integration/*`) and the inbox list/send endpoints. */
@@ -224,6 +233,42 @@ export const telegramAccountApi = {
   async deleteGroupTopic(chatId: string, topicId: number): Promise<{ ok: boolean }> {
     return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/topics/${topicId}`, {
       method: "DELETE",
+    });
+  },
+
+  async listGroupMembers(chatId: string): Promise<{ members: TelegramGroupMember[]; count?: number }> {
+    return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/members`);
+  },
+
+  async getGroupInviteLink(chatId: string): Promise<{ invite_link: string }> {
+    return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/invite-link`);
+  },
+
+  async addGroupMember(chatId: string, payload: { user_id?: number; username?: string }): Promise<unknown> {
+    return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/add-member`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  async renameGroup(chatId: string, title: string): Promise<{ ok?: boolean; title?: string }> {
+    return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/rename`, {
+      method: "POST",
+      body: { title },
+    });
+  },
+
+  async banGroupMember(chatId: string, userId: number): Promise<unknown> {
+    return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/ban-member`, {
+      method: "POST",
+      body: { user_id: userId },
+    });
+  },
+
+  async promoteGroupMember(chatId: string, userId: number, isAdmin: boolean): Promise<unknown> {
+    return apiFetch(`/telegram-account/chats/${encodeURIComponent(chatId)}/promote-member`, {
+      method: "POST",
+      body: { user_id: userId, is_admin: isAdmin },
     });
   },
 };

@@ -13,6 +13,7 @@ import {
   TrashBin,
 } from "@gravity-ui/icons";
 
+import { resolveTelegramMessageKind } from "@/features/messages/lib/telegramMedia";
 import type { TelegramMessage } from "@/features/messages/types";
 
 /** Same fixed quick-reaction set as the old frontend's
@@ -70,8 +71,9 @@ export function TelegramMessageMenu({
   onStartSelect,
   children,
 }: TelegramMessageMenuProps) {
+  const messageKind = resolveTelegramMessageKind(message);
   const hasCopyText = Boolean((message.text_content || "").trim());
-  const canSaveImage = Boolean(mediaUrl) && (message.message_kind === "photo" || message.message_kind === "sticker");
+  const canSaveImage = Boolean(mediaUrl) && (messageKind === "photo" || messageKind === "sticker");
   const canEdit = message.direction === "outbound" && message.message_kind === "text" && Boolean((message.text_content || "").trim());
   const currentReaction = message.metadata?.operator_reaction ?? null;
 

@@ -3,19 +3,23 @@ import type { InstagramMessage } from "@/features/messages/types";
 
 export type InstagramMediaLayout = "default" | "portrait";
 
+export type InstagramAttachmentKind = "photo" | "video" | "audio" | "link";
+
 export function resolveInstagramMessageMedia(message: InstagramMessage): {
   url: string | null;
   posterUrl: string | null;
-  kind: string | null;
+  kind: InstagramAttachmentKind | null;
   layout: InstagramMediaLayout;
+  linkLabel: string | null;
 } {
   const type = (message.message_type || "").toLowerCase();
-  const directUrl = message.media_url?.trim() || null;
+  const mediaType = (message.media_type || "").toLowerCase();
+  const directUrl = message.media_url?.trim() || message.preview_url?.trim() || null;
 
-  if (type === "image" || type === "photo") {
+  if (type === "image" || type === "photo" || (mediaType === "image" && directUrl)) {
     return directUrl
-      ? { url: directUrl, posterUrl: null, kind: "photo", layout: "default" }
-      : { url: null, posterUrl: null, kind: null, layout: "default" };
+      ? { url: directUrl, posterUrl: null, kind: "photo", layout: "default", linkLabel: null }
+      : { url: null, posterUrl: null, kind: null, layout: "default", linkLabel: null };
   }
 
   if (type === "video" || type === "ig_reel") {
@@ -28,20 +32,32 @@ export function resolveInstagramMessageMedia(message: InstagramMessage): {
         ? `${env.apiBaseUrl}/instagram/messages/${encodeURIComponent(message.id)}/thumbnail`
         : null;
     return url
-      ? { url, posterUrl, kind: "video", layout: "portrait" }
-      : { url: null, posterUrl: null, kind: null, layout: "default" };
+      ? { url, posterUrl, kind: "video", layout: "portrait", linkLabel: null }
+      : { url: null, posterUrl: null, kind: null, layout: "default", linkLabel: null };
   }
 
-  if (type === "audio" || type === "voice") {
+  if (type === "audio" || type === "voice" || mediaType === "audio") {
     const url = message.id
       ? `${env.apiBaseUrl}/instagram/messages/${encodeURIComponent(message.id)}/audio`
       : directUrl;
     return url
-      ? { url, posterUrl: null, kind: "audio", layout: "default" }
-      : { url: null, posterUrl: null, kind: null, layout: "default" };
+      ? { url, posterUrl: null, kind: "audio", layout: "default", linkLabel: null }
+      : { url: null, posterUrl: null, kind: null, layout: "default", linkLabel: null };
   }
 
-  return { url: null, posterUrl: null, kind: null, layout: "default" };
+  if (type === "share" || type === "story_mention" || type === "story_reply") {
+    const linkLabel =
+      type === "share"
+        ? "Shared post"
+        : type === "story_mention"
+          ? "Story mention"
+          : "Story reply";
+    return directUrl
+      ? { url: directUrl, posterUrl: null, kind: "link", layout: "default", linkLabel }
+      : { url: null, posterUrl: null, kind: "link", layout: "default", linkLabel };
+  }
+
+  return { url: null, posterUrl: null, kind: null, layout: "default", linkLabel: null };
 }
 
 export function instagramMediaFallbackLabel(messageType: string | null | undefined): string {

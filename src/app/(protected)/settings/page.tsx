@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { ALL_SETTINGS_SECTIONS, DEFAULT_SETTINGS_SECTION } from "@/constants/settings-sitemap";
 import { ROUTES } from "@/constants/routes";
-import { SettingsNav } from "@/features/settings/components/SettingsNav";
+import { SettingsNav, SettingsNavMobile } from "@/features/settings/components/SettingsNav";
 import { SettingsPlaceholderPanel } from "@/features/settings/components/SettingsPlaceholderPanel";
 import { GeneralSettingsForm } from "@/features/settings/components/GeneralSettingsForm";
 import { NotificationsSettingsForm } from "@/features/settings/components/NotificationsSettingsForm";
@@ -102,7 +102,9 @@ function SettingsPageContent() {
         </p>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-6">
+      <SettingsNavMobile activeKey={activeSection.key} onSelect={handleSelect} />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row md:gap-6">
         <SettingsNav activeKey={activeSection.key} onSelect={handleSelect} />
         <div className="min-w-0 flex-1 overflow-y-auto pb-6">
           {ReadyComponent ? <ReadyComponent /> : <SettingsPlaceholderPanel section={activeSection} />}

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@heroui/react";
+import { ChevronLeft } from "@gravity-ui/icons";
 
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -12,6 +13,7 @@ import { MessageBubbleRow } from "@/features/messages/components/MessageBubbleRo
 import { SmsComposer, NewSmsPhoneField } from "@/features/messages/components/SmsComposer";
 import { LinkedLeadChip } from "@/features/messages/components/LinkedLeadChip";
 import { LinkLeadDialog } from "@/features/messages/components/LinkLeadDialog";
+import { DaySeparator, groupMessagesByDay } from "@/features/messages/lib/messageDayGroups";
 import {
   useEskizAccountQuery,
   useEskizChatsQuery,
@@ -30,7 +32,7 @@ import {
  * "not connected" with an explicit empty state pointing there, same
  * precedent `eskizSms.ts`'s own doc comment already established.
  */
-export function SmsPanel() {
+export function SmsPanel({ onChatOpenChange }: { onChatOpenChange?: (open: boolean) => void }) {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -44,10 +46,22 @@ export function SmsPanel() {
 
   const templatesQuery = useEskizTemplatesQuery(connected);
   const messagesQuery = useEskizMessagesQuery(selectedChatId);
+  const messages = messagesQuery.data ?? [];
+  const messageDayGroups = useMemo(
+    () => groupMessagesByDay(messages, (m) => m.created_at),
+    [messages],
+  );
   const sendMutation = useEskizSendMutation(selectedChatId);
   const linkLeadMutation = useEskizLinkLeadMutation();
 
   useEskizRealtime(connected, selectedChatId);
+
+  const activePhone = selectedChat?.phone_number ?? pendingPhone ?? null;
+  const threadOpen = Boolean(activePhone);
+
+  useEffect(() => {
+    onChatOpenChange?.(threadOpen);
+  }, [threadOpen, onChatOpenChange]);
 
   if (accountQuery.isLoading) return <LoadingState label="Loading SMS…" className="flex-1" />;
   if (accountQuery.isError) return <ErrorState error={accountQuery.error} onRetry={() => accountQuery.refetch()} className="flex-1" />;
@@ -67,11 +81,14 @@ export function SmsPanel() {
     );
   }
 
-  const activePhone = selectedChat?.phone_number ?? pendingPhone ?? null;
+  function closeThread() {
+    setSelectedChatId(null);
+    setPendingPhone(null);
+  }
 
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="flex w-80 shrink-0 flex-col border-r border-black/[0.06] dark:border-white/10">
+      <div className={`${threadOpen ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r border-black/[0.06] md:w-80 dark:border-white/10`}>
         <NewSmsPhoneField
           onStart={(phone) => {
             setPendingPhone(phone);
@@ -104,7 +121,7 @@ export function SmsPanel() {
         </div>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className={`${!threadOpen ? "hidden md:flex" : "flex"} min-h-0 min-w-0 flex-1 flex-col`}>
         {!activePhone ? (
           <div className="flex flex-1 items-center justify-center">
             <EmptyState title="Select a conversation" description="Choose an SMS chat, or start a new one by phone number." />
@@ -112,7 +129,17 @@ export function SmsPanel() {
         ) : (
           <>
             <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] px-4 py-3 dark:border-white/10">
-              <p className="truncate text-sm font-semibold text-foreground">{activePhone}</p>
+              <div className="flex min-w-0 items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Back to chat list"
+                  onClick={closeThread}
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 hover:bg-[var(--default)] hover:text-foreground md:hidden"
+                >
+                  <ChevronLeft className="size-5" aria-hidden="true" />
+                </button>
+                <p className="truncate text-sm font-semibold text-foreground">{activePhone}</p>
+              </div>
               {selectedChat ? (
                 <LinkedLeadChip linkedLeadId={selectedChat.linked_lead_id} onOpenDialog={() => setLinkDialogOpen(true)} />
               ) : null}
@@ -124,11 +151,16 @@ export function SmsPanel() {
                 <LoadingState label="Loading messages…" />
               ) : messagesQuery.isError ? (
                 <ErrorState error={messagesQuery.error} onRetry={() => messagesQuery.refetch()} />
-              ) : (messagesQuery.data ?? []).length === 0 ? (
+              ) : messages.length === 0 ? (
                 <EmptyState title="No messages yet" description="Send the first SMS below." />
               ) : (
-                (messagesQuery.data ?? []).map((message) => (
-                  <MessageBubbleRow key={message.id} content={message.text} direction="outbound" timestamp={message.created_at} status={message.status} />
+                messageDayGroups.map((group) => (
+                  <div key={group.label}>
+                    <DaySeparator label={group.label} />
+                    {group.items.map((message) => (
+                      <MessageBubbleRow key={message.id} content={message.text} direction="outbound" timestamp={message.created_at} status={message.status} />
+                    ))}
+                  </div>
                 ))
               )}
             </div>

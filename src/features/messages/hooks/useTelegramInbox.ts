@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
+import { invalidateAgenticDrafts, patchTelegramChatInCache } from "@/features/messages/hooks/useAgentic";
+import { applyTelegramChatUpdated } from "@/features/messages/lib/telegramChatRealtime";
+import { TELEGRAM_MESSAGE_PAGE_SIZE } from "@/features/messages/lib/telegramMessagesPage";
 import { telegramChatsApi, telegramMessagesApi } from "@/services/api/telegramMessages";
-import { subscribeToTelegramEvents } from "@/services/realtime/subscriptions";
+import { subscribeToLeadPhoneBound, subscribeToTelegramEvents } from "@/services/realtime/subscriptions";
 import type { TelegramChat, TelegramMessage } from "@/features/messages/types";
 
 const BUSINESS_BOT_CHAT_PAGE_SIZE = 50;
 /** Linked-account inboxes are large — load 500 up front (backend max per request). */
 const USER_ACCOUNT_CHAT_PAGE_SIZE = 500;
-const CHATS_KEY = (workspaceId: string, mode: string) => ["telegram-chats", workspaceId, mode] as const;
+const CHATS_KEY = (workspaceId: string, mode: string, assignedTo?: string) =>
+  ["telegram-chats", workspaceId, mode, assignedTo ?? ""] as const;
 const MESSAGES_KEY = (chatId: string) => ["telegram-messages", chatId] as const;
 const INVALIDATE_DEBOUNCE_MS = 800;
 /** Linked-account mode prefetches 500 chats per page — keep scrolling past that threshold. */
@@ -18,14 +22,38 @@ export const USER_ACCOUNT_CHAT_PREFETCH_TARGET = 500;
 /** Pull this many messages from Telegram when a linked-account chat is opened. */
 export const CHAT_OPEN_HISTORY_SYNC_LIMIT = 100;
 
+export interface TelegramMessagesCache {
+  messages: TelegramMessage[];
+  hasMore: boolean;
+}
+
+export function readTelegramMessagesCache(
+  data: TelegramMessagesCache | TelegramMessage[] | undefined,
+): TelegramMessagesCache {
+  if (!data) return { messages: [], hasMore: false };
+  if (Array.isArray(data)) return { messages: data, hasMore: false };
+  return data;
+}
+
+export function patchTelegramMessagesInCache(
+  queryClient: QueryClient,
+  chatId: string,
+  updater: (prev: TelegramMessagesCache) => TelegramMessagesCache,
+) {
+  queryClient.setQueryData<TelegramMessagesCache | TelegramMessage[]>(MESSAGES_KEY(chatId), (old) =>
+    updater(readTelegramMessagesCache(old)),
+  );
+}
+
 export function useTelegramChatsQuery(
   workspaceId: string | null,
   search: string,
   mode: "business_bot" | "user_account" = "business_bot",
+  assignedTo?: string,
 ) {
   const pageSize = mode === "user_account" ? USER_ACCOUNT_CHAT_PAGE_SIZE : BUSINESS_BOT_CHAT_PAGE_SIZE;
   const query = useInfiniteQuery({
-    queryKey: workspaceId ? [...CHATS_KEY(workspaceId, mode), search] : ["telegram-chats-disabled"],
+    queryKey: workspaceId ? [...CHATS_KEY(workspaceId, mode, assignedTo), search] : ["telegram-chats-disabled"],
     queryFn: ({ pageParam = 0 }) =>
       telegramChatsApi.list({
         workspaceId: workspaceId as string,
@@ -33,6 +61,7 @@ export function useTelegramChatsQuery(
         offset: pageParam,
         search: search || undefined,
         mode,
+        assignedTo,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, _pages, lastPageParam) =>
@@ -67,7 +96,7 @@ export function useTelegramSyncHistoryMutation(workspaceId: string | null) {
 export function useTelegramMessagesQuery(chatId: string | null) {
   return useQuery({
     queryKey: chatId ? MESSAGES_KEY(chatId) : ["telegram-messages-disabled"],
-    queryFn: () => telegramMessagesApi.list(chatId as string),
+    queryFn: () => telegramMessagesApi.listPage(chatId as string, { limit: TELEGRAM_MESSAGE_PAGE_SIZE }),
     enabled: Boolean(chatId),
     staleTime: 5_000,
   });
@@ -120,15 +149,19 @@ export function useTelegramSendMutation(chatId: string | null) {
         reply_to_message_id: params.replyToMessageId ?? null,
         metadata: params.replyPreview ? { reply_preview: params.replyPreview } : undefined,
       };
-      queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) => (prev ? [...prev, optimistic] : [optimistic]));
+      patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+        ...prev,
+        messages: [...prev.messages, optimistic],
+      }));
       return { tempId };
     },
     onSuccess: (message, _params, context) => {
       if (!chatId) return;
       const tempId = context?.tempId;
-      queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) =>
-        prev?.map((m) => (m.id === tempId ? (message ?? { ...m, status: "sent" }) : m)),
-      );
+      patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) => (m.id === tempId ? (message ? message : { ...m, status: "sent" }) : m)),
+      }));
       // Deliberately no invalidate/refetch here even when the response body
       // is empty: an immediate refetch can race the backend's own write
       // (server list doesn't have the row yet) and wholesale-replace the
@@ -140,9 +173,10 @@ export function useTelegramSendMutation(chatId: string | null) {
     onError: (_err, _params, context) => {
       if (!chatId || !context?.tempId) return;
       const tempId = context.tempId;
-      queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) =>
-        prev?.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m)),
-      );
+      patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m)),
+      }));
     },
   });
 }
@@ -159,13 +193,14 @@ export function useTelegramReactionMutation(chatId: string | null) {
       telegramMessagesApi.react(params.messageId, params.emoji),
     onSuccess: (updated, params) => {
       if (!chatId) return;
-      queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) =>
-        prev?.map((m) =>
+      patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) =>
           m.id === params.messageId
             ? { ...m, metadata: { ...(m.metadata ?? {}), operator_reaction: params.emoji, ...(updated?.metadata ?? {}) } }
             : m,
         ),
-      );
+      }));
     },
   });
 }
@@ -178,9 +213,12 @@ export function useTelegramEditMutation(chatId: string | null) {
     mutationFn: (params: { messageId: string; text: string }) => telegramMessagesApi.edit(params.messageId, params.text),
     onSuccess: (_updated, params) => {
       if (!chatId) return;
-      queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) =>
-        prev?.map((m) => (m.id === params.messageId ? { ...m, text_content: params.text, is_edited: true } : m)),
-      );
+      patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) =>
+          m.id === params.messageId ? { ...m, text_content: params.text, is_edited: true } : m,
+        ),
+      }));
     },
   });
 }
@@ -194,9 +232,10 @@ export function useTelegramDeleteMutation(chatId: string | null) {
       telegramMessagesApi.remove(params.messageId, { revoke: params.revoke }),
     onSuccess: (_void, params) => {
       if (!chatId) return;
-      queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) =>
-        prev?.filter((m) => m.id !== params.messageId),
-      );
+      patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+        ...prev,
+        messages: prev.messages.filter((m) => m.id !== params.messageId),
+      }));
     },
   });
 }
@@ -238,16 +277,80 @@ export function useTelegramLinkLeadMutation(workspaceId: string | null) {
   });
 }
 
+export function useTelegramChatAssigneesQuery(workspaceId: string | null) {
+  return useQuery({
+    queryKey: ["telegram-chat-assignees", workspaceId],
+    queryFn: () => telegramChatsApi.listAssignees(workspaceId as string),
+    enabled: Boolean(workspaceId),
+    staleTime: 60_000,
+  });
+}
+
+export function useTelegramAssignChatMutation(workspaceId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { chatId: string; assignedTo: string | null }) =>
+      telegramChatsApi.assign(params.chatId, workspaceId as string, params.assignedTo),
+    onSuccess: () => {
+      if (workspaceId) void queryClient.invalidateQueries({ queryKey: ["telegram-chats", workspaceId] });
+    },
+  });
+}
+
+export function useTelegramDeleteChatMutation(workspaceId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (chatId: string) => telegramChatsApi.remove(chatId, workspaceId as string),
+    onSuccess: (_void, chatId) => {
+      if (workspaceId) void queryClient.invalidateQueries({ queryKey: ["telegram-chats", workspaceId] });
+      queryClient.removeQueries({ queryKey: MESSAGES_KEY(chatId) });
+    },
+  });
+}
+
+export function useTelegramSetClosedMutation(workspaceId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { chatId: string; closed: boolean }) =>
+      telegramChatsApi.setClosed(params.chatId, workspaceId as string, params.closed),
+    onSuccess: (chat) => {
+      if (!workspaceId) return;
+      queryClient.setQueriesData<{ pages: TelegramChat[][]; pageParams: unknown[] }>(
+        { queryKey: ["telegram-chats", workspaceId] },
+        (old) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => page.map((c) => (c.id === chat.id ? { ...c, ...chat } : c))),
+          };
+        },
+      );
+    },
+  });
+}
+
 /** Wires the Telegram socket events (see `subscriptions.ts`) into the
  * React Query cache: new messages for the currently open chat are appended
  * directly (no round-trip refetch), everything else (list previews/unread
  * counts/other-chat activity) triggers one debounced chat-list refetch. */
-export function useTelegramRealtime(workspaceId: string | null, selectedChatId: string | null) {
+export function useTelegramRealtime(
+  workspaceId: string | null,
+  selectedChatId: string | null,
+  opts?: {
+    onChatDeleted?: (chatId: string) => void;
+    onLeadPhoneBound?: (payload: { leadId: string; phoneNumber?: string }) => void;
+    openChatLinkedLeadId?: string | null;
+  },
+) {
   const queryClient = useQueryClient();
   const selectedChatIdRef = useRef(selectedChatId);
+  const optsRef = useRef(opts);
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
+  useEffect(() => {
+    optsRef.current = opts;
+  }, [opts]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -260,36 +363,73 @@ export function useTelegramRealtime(workspaceId: string | null, selectedChatId: 
       }, INVALIDATE_DEBOUNCE_MS);
     };
 
-    const unsubscribe = subscribeToTelegramEvents({
+    const unsubscribeTelegram = subscribeToTelegramEvents({
       onNewMessage: (row) => {
         const chatId = typeof row.chat_id === "string" ? row.chat_id : undefined;
         if (chatId && chatId === selectedChatIdRef.current) {
-          queryClient.setQueryData<TelegramMessage[]>(MESSAGES_KEY(chatId), (prev) => {
-            const message = row as unknown as TelegramMessage;
-            if (!prev) return [message];
-            if (prev.some((m) => m.id === message.id)) return prev;
-            // Reconcile our own optimistic bubble (see
-            // `useTelegramSendMutation`) with the authoritative echo
-            // instead of appending a duplicate.
+          const message = row as unknown as TelegramMessage;
+          patchTelegramMessagesInCache(queryClient, chatId, (prev) => {
+            if (prev.messages.some((m) => m.id === message.id)) return prev;
             if (message.direction === "outbound") {
-              const tempIndex = prev.findIndex((m) => m.id.startsWith("optimistic-") && m.text_content === message.text_content);
+              const tempIndex = prev.messages.findIndex(
+                (m) => m.id.startsWith("optimistic-") && m.text_content === message.text_content,
+              );
               if (tempIndex !== -1) {
-                const next = [...prev];
+                const next = [...prev.messages];
                 next[tempIndex] = message;
-                return next;
+                return { ...prev, messages: next };
               }
             }
-            return [...prev, message];
+            return { ...prev, messages: [...prev.messages, message] };
           });
         }
         scheduleListInvalidate();
       },
-      onChatUpdated: () => scheduleListInvalidate(),
+      onMessageUpdated: (row) => {
+        const chatId = typeof row.chat_id === "string" ? row.chat_id : undefined;
+        const id = typeof row.id === "string" ? row.id : undefined;
+        if (!chatId || !id || chatId !== selectedChatIdRef.current) return;
+        const message = row as unknown as TelegramMessage;
+        patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+          ...prev,
+          messages: prev.messages.map((m) => (m.id === id ? message : m)),
+        }));
+      },
+      onMessageDeleted: (row) => {
+        const chatId = typeof row.chat_id === "string" ? row.chat_id : undefined;
+        const id = typeof row.id === "string" ? row.id : undefined;
+        if (!chatId || !id || chatId !== selectedChatIdRef.current) return;
+        patchTelegramMessagesInCache(queryClient, chatId, (prev) => ({
+          ...prev,
+          messages: prev.messages.filter((m) => m.id !== id),
+        }));
+      },
+      onReadSync: (row) => {
+        const chatId = typeof row.chat_id === "string" ? row.chat_id : undefined;
+        if (!chatId) return;
+        patchTelegramChatInCache(queryClient, chatId, { unread_count: 0 });
+      },
+      onChatUpdated: (row) => {
+        applyTelegramChatUpdated(queryClient, row, {
+          onDeleted: (chatId) => optsRef.current?.onChatDeleted?.(chatId),
+          onMissingChat: scheduleListInvalidate,
+        });
+      },
+      onAgenticDraft: () => invalidateAgenticDrafts(queryClient),
+      onAgenticSettings: () => {
+        void queryClient.invalidateQueries({ queryKey: ["agentic-settings"] });
+      },
+    });
+
+    const unsubscribeLead = subscribeToLeadPhoneBound(workspaceId, ({ leadId, phoneNumber }) => {
+      if (optsRef.current?.openChatLinkedLeadId !== leadId) return;
+      optsRef.current?.onLeadPhoneBound?.({ leadId, phoneNumber });
     });
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      unsubscribe();
+      unsubscribeTelegram();
+      unsubscribeLead();
     };
   }, [workspaceId, queryClient]);
 }

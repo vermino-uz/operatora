@@ -4,6 +4,12 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { instagramConversationsApi } from "@/services/api/instagramMessages";
+import { applyInstagramConversationUpdated } from "@/features/messages/lib/instagramChatRealtime";
+import {
+  invalidateAgenticDrafts,
+  setAgenticSettingsCache,
+} from "@/features/messages/hooks/useAgentic";
+import type { AgenticSettings } from "@/services/api/agentic";
 import { subscribeToInstagramEvents } from "@/services/realtime/subscriptions";
 import type { InstagramMessage } from "@/features/messages/types";
 
@@ -79,12 +85,20 @@ export function useInstagramLinkLeadMutation() {
   });
 }
 
-export function useInstagramRealtime(enabled: boolean, selectedChatId: string | null) {
+export function useInstagramRealtime(
+  enabled: boolean,
+  selectedChatId: string | null,
+  opts?: { onChatDeleted?: (chatId: string) => void },
+) {
   const queryClient = useQueryClient();
   const selectedChatIdRef = useRef(selectedChatId);
+  const optsRef = useRef(opts);
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
+  useEffect(() => {
+    optsRef.current = opts;
+  }, [opts]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -118,7 +132,14 @@ export function useInstagramRealtime(enabled: boolean, selectedChatId: string | 
         }
         scheduleListInvalidate();
       },
-      onConversationUpdated: () => scheduleListInvalidate(),
+      onConversationUpdated: (row) => {
+        applyInstagramConversationUpdated(queryClient, row, {
+          onDeleted: (chatId) => optsRef.current?.onChatDeleted?.(chatId),
+          onMissingChat: scheduleListInvalidate,
+        });
+      },
+      onAgenticDraft: () => invalidateAgenticDrafts(queryClient, "instagram"),
+      onAgenticSettings: (row) => setAgenticSettingsCache(queryClient, row as unknown as AgenticSettings, "instagram"),
     });
 
     return () => {

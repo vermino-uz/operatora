@@ -51,11 +51,13 @@ export function AdsCopilotPanel({
   return (
     <aside
       aria-hidden={!open}
-      className={`flex h-full shrink-0 flex-col overflow-hidden border-black/[0.08] transition-[width] duration-200 ease-out dark:border-white/[0.12] ${
-        open ? "w-[340px] border-l" : "w-0 border-l-0"
+      className={`flex shrink-0 flex-col overflow-hidden border-black/[0.08] bg-background transition-[width] duration-200 ease-out dark:border-white/[0.12] ${
+        open
+          ? "fixed inset-0 z-50 w-full border-l md:static md:inset-auto md:z-auto md:h-full md:w-[340px]"
+          : "hidden w-0 border-l-0 md:block md:w-0"
       }`}
     >
-      <div className="flex h-[52px] w-[340px] shrink-0 items-center gap-2 border-b border-black/[0.08] px-4 dark:border-white/[0.12]">
+      <div className="flex h-[52px] w-full shrink-0 items-center gap-2 border-b border-black/[0.08] px-4 md:w-[340px] dark:border-white/[0.12]">
         <Sparkles className="h-4 w-4 text-accent" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">Ads Copilot</p>
@@ -71,7 +73,7 @@ export function AdsCopilotPanel({
         </button>
       </div>
 
-      <div ref={scrollRef} className="w-[340px] flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} className="w-full flex-1 space-y-2.5 overflow-y-auto px-4 py-3 md:w-[340px]">
         {messages.length === 0 && !streamingText ? (
           <div className="flex flex-col gap-1.5">
             <p className="mb-1 text-xs text-foreground/60">Try asking:</p>
@@ -115,7 +117,7 @@ export function AdsCopilotPanel({
         </div>
       </div>
 
-      <div className="flex w-[340px] shrink-0 gap-2 border-t border-black/[0.08] p-3 dark:border-white/[0.12]">
+      <div className="flex w-full shrink-0 gap-2 border-t border-black/[0.08] p-3 md:w-[340px] dark:border-white/[0.12]">
         <input
           type="text"
           value={input}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useSessionStore } from "@/state/session-store";
@@ -31,6 +31,7 @@ import { ChatComposer } from "@/features/chat/components/ChatComposer";
 export default function DashboardPage() {
   const workspaceId = useSessionStore((s) => s.workspaceId);
   const queryClient = useQueryClient();
+  const [mobilePanel, setMobilePanel] = useState<"list" | "thread">("thread");
 
   const controller = useChatController({ workspaceId });
   const modelsQuery = useModelsQuery(workspaceId);
@@ -63,23 +64,51 @@ export default function DashboardPage() {
   const headerSubtitle = controller.activeThread
     ? `Updated ${new Date(controller.activeThread.updated_at).toLocaleString()}`
     : "Ask about leads, conversations, tasks, and more";
+  const mobileThreadView = mobilePanel === "thread";
 
   return (
-    <div className="-m-6 flex h-[calc(100%+3rem)] min-h-0">
+    <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 md:-m-6 md:h-[calc(100%+3rem)]">
       <ChatThreadList
         workspaceId={workspaceId}
         threadsQuery={controller.threadsQuery}
         threads={controller.threads}
         activeThreadId={controller.activeThreadId}
-        onSelect={controller.selectThread}
-        onNewThread={controller.startNewThread}
+        onSelect={(id) => {
+          controller.selectThread(id);
+          setMobilePanel("thread");
+        }}
+        onNewThread={() => {
+          controller.startNewThread();
+          setMobilePanel("thread");
+        }}
+        className={
+          mobileThreadView
+            ? "hidden md:flex md:w-60"
+            : "flex w-full md:w-60"
+        }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={
+          mobileThreadView
+            ? "flex min-h-0 min-w-0 flex-1 flex-col"
+            : "hidden min-h-0 min-w-0 flex-1 flex-col md:flex"
+        }
+      >
         <ChatHeader
           title={headerTitle}
           subtitle={headerSubtitle}
           modelLabel={activeModelOption?.label ?? activeModelOption?.name}
+          onBack={
+            mobileThreadView
+              ? () => setMobilePanel("list")
+              : undefined
+          }
+          onOpenThreads={
+            mobileThreadView
+              ? () => setMobilePanel("list")
+              : undefined
+          }
         />
 
         {isInitialLoading ? (

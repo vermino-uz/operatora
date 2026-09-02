@@ -2,7 +2,7 @@
 
 import { useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { Button, Chip, Spinner } from "@heroui/react";
-import { ArrowLeft, ArrowUp, Check, Sparkles, TrashBin } from "@gravity-ui/icons";
+import { ArrowLeft, ArrowUp, Check, Sparkles, TrashBin, Xmark } from "@gravity-ui/icons";
 
 import { ApiError } from "@/types/api";
 import { useDeleteDashboardMutation, useEditDashboardMutation } from "@/features/dashboards/hooks/useDashboards";
@@ -54,6 +54,7 @@ export function DashboardView({
     dashboard.suggestions.length ? dashboard.suggestions : FALLBACK_SUGGESTIONS,
   );
   const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [mobileCopilotOpen, setMobileCopilotOpen] = useState(false);
 
   const accent = CATEGORY_ACCENT[resolved.category] ?? CATEGORY_ACCENT.general;
 
@@ -81,9 +82,9 @@ export function DashboardView({
   };
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1">
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[1100px] px-6 py-5">
+        <div className="mx-auto max-w-[1100px] px-3 py-4 sm:px-6 sm:py-5">
           <div className="mb-5 flex items-start gap-3">
             <Button variant="secondary" size="sm" isIconOnly onPress={onBack} aria-label="Back">
               <ArrowLeft className="h-4 w-4" />
@@ -128,15 +129,41 @@ export function DashboardView({
       </div>
 
       {isOwner ? (
-        <aside className="flex min-h-0 w-[340px] shrink-0 flex-col border-l border-black/[0.08] dark:border-white/[0.12]">
+        <>
+          {!mobileCopilotOpen ? (
+            <button
+              type="button"
+              onClick={() => setMobileCopilotOpen(true)}
+              className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-40 flex size-12 items-center justify-center rounded-full text-white shadow-lg lg:hidden"
+              style={{ backgroundColor: accent }}
+              aria-label="Open AI editor"
+            >
+              <Sparkles className="h-5 w-5" />
+            </button>
+          ) : null}
+          <aside
+            className={`flex min-h-0 flex-col border-l border-black/[0.08] bg-background dark:border-white/[0.12] ${
+              mobileCopilotOpen
+                ? "fixed inset-0 z-50 w-full lg:static lg:inset-auto lg:z-auto lg:w-[340px] lg:shrink-0"
+                : "hidden lg:flex lg:w-[340px] lg:shrink-0"
+            }`}
+          >
           <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-black/[0.08] px-4 dark:border-white/[0.12]">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${accent}1a` }}>
               <Sparkles className="h-3.5 w-3.5" style={{ color: accent }} />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold leading-tight text-foreground">Operatora AI</div>
               <div className="text-[11px] text-foreground/40">Ask for changes in plain language</div>
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileCopilotOpen(false)}
+              className="flex size-8 items-center justify-center rounded-full text-foreground/40 hover:bg-[var(--default)] lg:hidden"
+              aria-label="Close AI editor"
+            >
+              <Xmark className="h-4 w-4" />
+            </button>
           </div>
 
           <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
@@ -215,6 +242,7 @@ export function DashboardView({
             <div className="mt-1.5 px-2 text-[10.5px] text-foreground/40">Enter to send · Shift+Enter for a new line</div>
           </div>
         </aside>
+        </>
       ) : null}
     </div>
   );

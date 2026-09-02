@@ -49,7 +49,7 @@ export function linkifyText(
         href={part}
         target="_blank"
         rel="noopener noreferrer"
-        className={linkClassName ?? "break-all text-[#26A5E4] underline underline-offset-2"}
+        className={linkClassName ?? "break-words [overflow-wrap:anywhere] text-[#26A5E4] underline underline-offset-2"}
         onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.stopPropagation()}
       >

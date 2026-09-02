@@ -38,6 +38,7 @@ export default function MessagesPage() {
   const [channel, setChannel] = useState<ChannelKey>("telegram");
   const [telegramUnread, setTelegramUnread] = useState(0);
   const [instagramUnread, setInstagramUnread] = useState(0);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   const permissionsQuery = useMyWorkspacePermissionsQuery(workspaceId);
 
@@ -60,10 +61,10 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100%+3rem)] min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-1 border-b border-black/[0.06] px-4 py-2 dark:border-white/10">
-        <TopTabButton active={topTab === "inbox"} onClick={() => setTopTab("inbox")} label="Customer Inbox" badge={telegramUnread + instagramUnread} />
-        <TopTabButton active={topTab === "team"} onClick={() => setTopTab("team")} label="Team Chat" />
+    <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 flex-col md:-m-6 md:h-[calc(100%+3rem)]">
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-black/[0.06] px-3 py-2 dark:border-white/10 md:px-4">
+        <TopTabButton active={topTab === "inbox"} onClick={() => { setTopTab("inbox"); setMobileChatOpen(false); }} label="Customer Inbox" badge={telegramUnread + instagramUnread} />
+        <TopTabButton active={topTab === "team"} onClick={() => { setTopTab("team"); setMobileChatOpen(false); }} label="Team Chat" />
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -71,30 +72,31 @@ export default function MessagesPage() {
           <>
             <ChannelRail
               active={channel}
-              onSelect={setChannel}
+              onSelect={(c) => { setChannel(c); setMobileChatOpen(false); }}
               channels={channels}
               unreadByChannel={{ telegram: telegramUnread, instagram: instagramUnread }}
+              className={mobileChatOpen ? "hidden md:flex" : undefined}
             />
             {channel === "telegram" ? (
               canViewTelegram ? (
-                <TelegramPanel onUnreadChange={setTelegramUnread} />
+                <TelegramPanel onUnreadChange={setTelegramUnread} onChatOpenChange={setMobileChatOpen} />
               ) : (
                 <LockedChannel name="Telegram" />
               )
             ) : channel === "instagram" ? (
               canViewInstagram ? (
-                <InstagramPanel onUnreadChange={setInstagramUnread} />
+                <InstagramPanel onUnreadChange={setInstagramUnread} onChatOpenChange={setMobileChatOpen} />
               ) : (
                 <LockedChannel name="Instagram" />
               )
             ) : channel === "sms" ? (
-              <SmsPanel />
+              <SmsPanel onChatOpenChange={setMobileChatOpen} />
             ) : (
               <ComingSoonChannel name="WhatsApp" />
             )}
           </>
         ) : (
-          <TeamChatPanel />
+          <TeamChatPanel onChatOpenChange={setMobileChatOpen} />
         )}
       </div>
     </div>

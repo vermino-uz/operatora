@@ -76,9 +76,9 @@ export default function ConversationsPage() {
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100%+3rem)] min-h-0">
-      <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${selected ? "hidden xl:flex" : ""}`}>
-        <div className="flex items-center justify-between gap-3 border-b border-divider px-6 py-3">
+    <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 md:-m-6 md:h-[calc(100%+3rem)]">
+      <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${selected ? "hidden md:flex" : ""}`}>
+        <div className="flex flex-col gap-2 border-b border-divider px-3 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6">
           <div>
             <h1 className="text-base font-semibold text-foreground">Conversations</h1>
             <p className="text-sm text-foreground/60">Call recordings, AI summaries, and lead updates.</p>
@@ -88,6 +88,7 @@ export default function ConversationsPage() {
             variant="secondary"
             aria-label="Conversation settings"
             onPress={() => setSettingsOpen(true)}
+            className="self-start sm:self-auto"
           >
             <Gear className="size-4" aria-hidden="true" />
             Settings
@@ -105,7 +106,7 @@ export default function ConversationsPage() {
       </div>
 
       {selected ? (
-        <div className="flex min-h-0 w-full shrink-0 flex-col border-l border-divider bg-background xl:w-[720px]">
+        <div className="flex min-h-0 w-full shrink-0 flex-col border-l border-divider bg-background md:w-[min(100%,720px)] lg:w-[720px]">
           <ConversationDetailPanel key={selected.id} conversationId={selected.id} onClose={() => setSelected(null)} />
         </div>
       ) : null}

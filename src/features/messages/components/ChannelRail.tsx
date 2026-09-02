@@ -40,15 +40,18 @@ export interface ChannelRailProps {
   onSelect: (channel: ChannelKey) => void;
   unreadByChannel?: Partial<Record<ChannelKey, number>>;
   channels: ChannelKey[];
+  className?: string;
 }
 
 /** Vertical channel rail — adapted from the old frontend's own channel-
  * switcher concept (`MessagesCustomerInbox.tsx`'s `ChannelButton`) but
  * rebuilt with this app's own visual language (Tailwind + `@heroui/react`
  * `Tooltip`), not a literal port of its inline styles. */
-export function ChannelRail({ active, onSelect, unreadByChannel, channels }: ChannelRailProps) {
+export function ChannelRail({ active, onSelect, unreadByChannel, channels, className }: ChannelRailProps) {
   return (
-    <nav className="flex w-16 shrink-0 flex-col items-center gap-2 border-r border-black/[0.06] bg-background py-4 dark:border-white/10">
+    <nav
+      className={`flex w-16 shrink-0 flex-col items-center gap-2 border-r border-black/[0.06] bg-background py-4 dark:border-white/10 ${className ?? ""}`}
+    >
       {channels.map((channel) => {
         const isActive = channel === active;
         const unread = unreadByChannel?.[channel] ?? 0;

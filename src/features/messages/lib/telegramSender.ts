@@ -22,6 +22,12 @@ export interface TelegramInboundAvatar {
 }
 
 const TG_AVATAR_PALETTE = ["#26A5E4", "#3b82f6", "#0ea5e9", "#06b6d4", "#0891b2"];
+const OPERATOR_AVATAR_PALETTE = ["#7c3aed", "#059669", "#dc2626", "#d97706", "#0891b2"];
+
+export interface TelegramOutboundAvatar {
+  color: string;
+  initials: string;
+}
 
 export function pickAvatarColor(seed: string, palette: string[] = TG_AVATAR_PALETTE): string {
   let hash = 0;
@@ -29,6 +35,24 @@ export function pickAvatarColor(seed: string, palette: string[] = TG_AVATAR_PALE
     hash = (hash * 31 + seed.charCodeAt(i)) | 0;
   }
   return palette[Math.abs(hash) % palette.length]!;
+}
+
+/** Outbound teammate label + initials avatar beside operator-sent bubbles. */
+export function resolveOutboundOperatorMark(
+  senderId: string | undefined,
+  profiles: Record<string, { name: string; initials: string }>,
+): { senderName?: string; outboundAvatar?: TelegramOutboundAvatar } {
+  if (!senderId) return {};
+  const profile = profiles[senderId];
+  const name = profile?.name || "Team member";
+  const initials = profile?.initials || initialsFor(name);
+  return {
+    senderName: name,
+    outboundAvatar: {
+      color: pickAvatarColor(senderId, OPERATOR_AVATAR_PALETTE),
+      initials,
+    },
+  };
 }
 
 function nameFromTelegramFrom(from: TelegramMessageFrom | null | undefined): string | null {
