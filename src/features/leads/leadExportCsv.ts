@@ -1,6 +1,7 @@
 import { parseCsv, toCsv } from "@/lib/csv";
 import {
   amountFieldCurrency,
+  coerceImageUrls,
   formatAmount,
   formatNumberFieldValue,
   type LeadCustomFieldDef,
@@ -40,7 +41,10 @@ function formatCustomFieldForCsv(def: LeadCustomFieldDef, raw: unknown): string 
       return raw === true ? "Yes" : "No";
     case "multi_select":
     case "relation":
-      return Array.isArray(raw) ? raw.join(", ") : String(raw);
+    case "image": {
+      const urls = coerceImageUrls(raw);
+      return urls?.join(", ") ?? "";
+    }
     default:
       return typeof raw === "string" ? raw : JSON.stringify(raw);
   }

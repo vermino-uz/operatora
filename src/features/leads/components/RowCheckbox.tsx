@@ -38,7 +38,7 @@ export function RowCheckbox({
         onClick?.(e);
       }}
       aria-label={label}
-      className="size-4 shrink-0 cursor-pointer accent-primary"
+      className="size-4 shrink-0 cursor-pointer rounded-md accent-primary"
     />
   );
 }

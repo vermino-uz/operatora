@@ -20,7 +20,7 @@ import { useSessionStore } from "@/state/session-store";
 import type { LeadRow } from "@/features/leads/types";
 import { leadQueryKey } from "@/features/leads/hooks/useLeadDetailsQuery";
 
-const SAVE_ON_CHANGE = new Set(["select", "status", "checkbox", "multi_select", "date", "relation"]);
+const SAVE_ON_CHANGE = new Set(["select", "status", "checkbox", "multi_select", "date", "relation", "image"]);
 
 function InlineCustomFieldRow({ def, lead }: { def: LeadCustomFieldDef; lead: LeadRow }) {
   const queryClient = useQueryClient();

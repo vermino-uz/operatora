@@ -32,7 +32,7 @@ function BoardCheckbox({
       checked={checked}
       onChange={onChange}
       aria-label={label}
-      className="size-4 shrink-0"
+      className="size-4 shrink-0 rounded-md accent-primary"
     />
   );
 }

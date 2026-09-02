@@ -12,6 +12,11 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Native checkboxes — match HeroUI `.checkbox__control` rounded corners. */
+input[type="checkbox"] {
+  border-radius: 0.375rem;
+}
+
 /*
  * HeroUI Pro Theme (saved design system)
  * @see https://heroui.com/docs/react/getting-started/theming

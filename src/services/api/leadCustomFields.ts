@@ -28,4 +28,17 @@ export const leadCustomFieldsApi = {
   async remove(id: string): Promise<{ success: true }> {
     return apiFetch<{ success: true }>(`/lead-custom-fields/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
+  /** `POST /lead-custom-fields/upload` — one image per request; store returned
+   * URLs as `string[]` under `custom_fields[field_name]`. */
+  async uploadImage(file: File): Promise<{ publicUrl: string }> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await apiFetch<{ url: string; publicUrl: string }>(`/lead-custom-fields/upload`, {
+      method: "POST",
+      body: form,
+    });
+    const publicUrl = res.publicUrl || res.url;
+    if (!publicUrl) throw new Error("Upload response missing URL");
+    return { publicUrl };
+  },
 };

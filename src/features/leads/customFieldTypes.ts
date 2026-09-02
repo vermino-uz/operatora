@@ -12,7 +12,7 @@
  * accepts/persists) are the authority here — this module mirrors them
  * field-for-field so a definition created here always round-trips.
  *
- * **All 19 types traced are real** — every one is backed by
+ * **All 20 types traced are real** — every one is backed by
  * `POST/PATCH /lead-custom-fields`'s validated persistence. `relation` is
  * additionally backed by a real, dedicated lookup endpoint
  * (`GET /lead-search`, `GET /lead-search/by-ids` — see
@@ -50,6 +50,7 @@ export const ALLOWED_FIELD_TYPES = [
   "rollup",
   "formula",
   "place",
+  "image",
 ] as const;
 
 export type CustomFieldTypeKey = (typeof ALLOWED_FIELD_TYPES)[number];
@@ -64,6 +65,7 @@ export type FieldInputKind =
   | "multi_select"
   | "status"
   | "relation"
+  | "image"
   | "none";
 
 export type FieldDisplayKind =
@@ -78,7 +80,8 @@ export type FieldDisplayKind =
   | "multi_select"
   | "status"
   | "person"
-  | "relation";
+  | "relation"
+  | "image";
 
 export type FieldOptionsKind = "none" | "list" | "status" | "rollup" | "formula" | "amount" | "date";
 
@@ -182,6 +185,7 @@ export const CUSTOM_FIELD_TYPES: Record<CustomFieldTypeKey, CustomFieldTypeDef> 
   rollup: { key: "rollup", label: "Rollup", inputKind: "none", displayKind: "text", optionsKind: "rollup", computed: true },
   formula: { key: "formula", label: "Formula", inputKind: "none", displayKind: "text", optionsKind: "formula", computed: true },
   place: { key: "place", label: "Place", inputKind: "text", displayKind: "text", optionsKind: "none", computed: false },
+  image: { key: "image", label: "Image", inputKind: "image", displayKind: "image", optionsKind: "none", computed: false },
 };
 
 export function getFieldType(key: string | null | undefined): CustomFieldTypeDef {
@@ -205,6 +209,17 @@ export function colorForOption(name: string): string {
   return OPTION_COLORS[h % OPTION_COLORS.length]!;
 }
 
+/** Normalize an `image` field value to a URL list (legacy single-string values included). */
+export function coerceImageUrls(raw: unknown): string[] | null {
+  if (raw == null || raw === "") return null;
+  if (Array.isArray(raw)) {
+    const urls = raw.map((v) => String(v).trim()).filter(Boolean);
+    return urls.length ? urls : null;
+  }
+  const s = String(raw).trim();
+  return s ? [s] : null;
+}
+
 // ---------------------------------------------------------------------------
 // value coercion / formatting
 // ---------------------------------------------------------------------------
@@ -226,6 +241,8 @@ export function coerceCustomFieldValue(type: CustomFieldTypeKey, raw: unknown): 
     case "multi_select":
     case "relation":
       return Array.isArray(raw) ? raw.map(String) : isBlank(raw) ? [] : [String(raw)];
+    case "image":
+      return coerceImageUrls(raw);
     default:
       if (isBlank(raw)) return null;
       return String(raw).trim();
@@ -241,6 +258,11 @@ export function validateCustomFieldValue(def: LeadCustomFieldDef, value: unknown
     isBlank(value) || (Array.isArray(value) && value.length === 0) || (type === "checkbox" && value !== true);
 
   if (type === "checkbox") return null; // a checkbox is never "blank" in a way worth blocking on
+  if (type === "image") {
+    const urls = coerceImageUrls(value);
+    if (required && (!urls || urls.length === 0)) return "This field is required";
+    return null;
+  }
   if (required && blank) return "This field is required";
   if (blank) return null;
 

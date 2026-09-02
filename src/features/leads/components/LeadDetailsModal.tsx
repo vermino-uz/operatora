@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Drawer, ListBox, Select, Tabs } from "@heroui/react";
+import { Drawer, ListBox, Select } from "@heroui/react";
 
 import { useSessionStore } from "@/state/session-store";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -91,8 +91,8 @@ export function LeadDetailsModal({
 
   return (
     <Drawer.Backdrop isOpen onOpenChange={(open) => !open && onClose()}>
-      <Drawer.Content placement="right" className="w-full max-w-2xl">
-        <Drawer.Dialog className="flex h-full max-h-[100dvh] flex-col">
+      <Drawer.Content placement="right">
+        <Drawer.Dialog className="flex h-full max-h-[100dvh] !w-full max-w-2xl flex-col">
           <Drawer.CloseTrigger />
           <Drawer.Header className="shrink-0">
             <Drawer.Heading className="flex items-center gap-2">
@@ -109,24 +109,31 @@ export function LeadDetailsModal({
               ) : null}
             </Drawer.Heading>
           </Drawer.Header>
-          <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(key as DetailsTab)} className="flex min-h-0 flex-1 flex-col">
-            <Tabs.List
-              aria-label="Lead details sections"
-              className="mx-4 mb-2 flex shrink-0 flex-wrap gap-1 rounded-lg border border-black/[0.08] bg-[var(--default)]/50 p-1 dark:border-white/[0.12]"
-            >
-              {DETAIL_TABS.map(([id, label]) => (
-                <Tabs.Tab
+          <div
+            role="tablist"
+            aria-label="Lead details sections"
+            className="flex shrink-0 items-stretch gap-5 overflow-x-auto border-b border-black/[0.06] px-4 dark:border-white/10"
+          >
+            {DETAIL_TABS.map(([id, label]) => {
+              const isActive = tab === id;
+              return (
+                <button
                   key={id}
-                  id={id}
-                  className="shrink-0 px-2.5 py-1.5 text-xs font-medium data-[selected=true]:text-accent-soft-foreground sm:text-sm"
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setTab(id)}
+                  className={`relative shrink-0 py-3 text-xs font-medium transition-colors sm:text-sm ${
+                    isActive ? "text-accent" : "text-foreground/55 hover:text-foreground"
+                  }`}
                 >
                   {label}
-                  <Tabs.Indicator className="bg-accent-soft" />
-                </Tabs.Tab>
-              ))}
-            </Tabs.List>
-
-            <Drawer.Body className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                  {isActive ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <Drawer.Body className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4">
               <div className="flex flex-col gap-4">
               {detailQuery.isError ? <ErrorState error={detailQuery.error} onRetry={() => detailQuery.refetch()} /> : null}
               {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
@@ -245,8 +252,7 @@ export function LeadDetailsModal({
                 <LeadAiAssistTab leadId={lead.id} leadName={formatLeadName(lead)} isActive={tab === "ai"} />
               ) : null}
               </div>
-            </Drawer.Body>
-          </Tabs>
+          </Drawer.Body>
         </Drawer.Dialog>
       </Drawer.Content>
     </Drawer.Backdrop>

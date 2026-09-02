@@ -14,6 +14,8 @@ import {
   type RollupFunction,
 } from "@/features/leads/customFieldTypes";
 import { useLeadsByIdsQuery } from "@/features/leads/hooks/useLeadSearch";
+import { ImageFieldThumbnails } from "@/features/leads/components/ImageFieldInput";
+import { coerceImageUrls } from "@/features/leads/customFieldTypes";
 
 interface DeriveSource {
   created_at?: string | null;
@@ -143,6 +145,19 @@ export function CustomFieldValue({
     case "relation": {
       const ids = Array.isArray(value) ? value.map(String) : [];
       return <RelationValue ids={ids} empty={empty} compact={compact} />;
+    }
+
+    case "image": {
+      const urls = coerceImageUrls(value);
+      if (!urls?.length) return empty;
+      if (compact) {
+        return (
+          <span className="text-foreground/70">
+            {urls.length === 1 ? "1 image" : `${urls.length} images`}
+          </span>
+        );
+      }
+      return <ImageFieldThumbnails value={value} size="md" maxVisible={6} />;
     }
 
     case "select":

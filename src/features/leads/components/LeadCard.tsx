@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Avatar, Chip } from "@heroui/react";
 import { Clock } from "@gravity-ui/icons";
@@ -9,6 +10,7 @@ import { intentLabel } from "@/features/leads/leadSignals";
 import { CHANNEL_ICONS } from "@/features/leads/channelIcons";
 import { RowCheckbox } from "@/features/leads/components/RowCheckbox";
 import { CustomFieldValue } from "@/features/leads/components/CustomFieldValue";
+import { ImageFieldThumbnails } from "@/features/leads/components/ImageFieldInput";
 import { customFieldVisibilityKey, useCardFieldVisibilityQuery } from "@/features/leads/hooks/useFieldVisibility";
 
 /** One kanban card — traced field-for-field against the old frontend's
@@ -69,6 +71,13 @@ export function LeadCard({
     const setting = savedVisibility.find((s) => s.field_name === key);
     return setting ? setting.is_visible : !hasSavedVisibility;
   });
+  const imageFieldNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const cf of visibilityBundle.data?.customFields ?? []) {
+      if (cf.field_type === "image") names.add(cf.field_name);
+    }
+    return names;
+  }, [visibilityBundle.data?.customFields]);
 
   return (
     <div
@@ -141,14 +150,27 @@ export function LeadCard({
       </div>
       {visibleCustomFields.length > 0 ? (
         <dl className="mt-2 flex flex-col gap-0.5 border-t border-black/[0.06] pt-2 dark:border-white/[0.08]">
-          {visibleCustomFields.map((cf) => (
-            <div key={cf.id} className="flex min-w-0 items-baseline gap-1.5 text-xs">
-              <dt className="shrink-0 text-foreground/40">{cf.field_name}:</dt>
-              <dd className="min-w-0 truncate text-foreground/70">
-                <CustomFieldValue def={cf} lead={lead} compact />
-              </dd>
-            </div>
-          ))}
+          {visibleCustomFields.map((cf) => {
+            const rawValue = (lead.custom_fields as Record<string, unknown> | null | undefined)?.[cf.field_name];
+            if (imageFieldNames.has(cf.field_name)) {
+              return (
+                <div key={cf.id} className="flex min-w-0 items-baseline gap-1.5 text-xs">
+                  <dt className="shrink-0 text-foreground/40">{cf.field_name}:</dt>
+                  <dd className="min-w-0">
+                    <ImageFieldThumbnails value={rawValue} size="sm" maxVisible={3} stopClickPropagation />
+                  </dd>
+                </div>
+              );
+            }
+            return (
+              <div key={cf.id} className="flex min-w-0 items-baseline gap-1.5 text-xs">
+                <dt className="shrink-0 text-foreground/40">{cf.field_name}:</dt>
+                <dd className="min-w-0 truncate text-foreground/70">
+                  <CustomFieldValue def={cf} lead={lead} compact />
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       ) : null}
     </div>

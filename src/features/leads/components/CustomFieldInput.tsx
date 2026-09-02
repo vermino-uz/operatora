@@ -12,6 +12,7 @@ import {
   type LeadCustomFieldDef,
 } from "@/features/leads/customFieldTypes";
 import { useLeadSearchQuery, useLeadsByIdsQuery } from "@/features/leads/hooks/useLeadSearch";
+import { ImageFieldInput } from "@/features/leads/components/ImageFieldInput";
 
 /**
  * Editable, type-aware input widget for one custom field's value — used by
@@ -122,7 +123,7 @@ export function CustomFieldInput({
             type="checkbox"
             checked={value === true}
             onChange={(e) => onChange(e.target.checked)}
-            className="size-4 rounded border-black/20 dark:border-white/20"
+            className="size-4 rounded-md border-black/20 dark:border-white/20"
           />
           {def.field_name}
         </label>
@@ -217,6 +218,14 @@ export function CustomFieldInput({
 
     case "relation":
       return <RelationFieldInput value={Array.isArray(value) ? value.map(String) : []} onChange={onChange} />;
+
+    case "image":
+      return (
+        <ImageFieldInput
+          value={value}
+          onChange={(next) => onChange(next)}
+        />
+      );
 
     default:
       // Computed types (created_time/last_edited_time/created_by/
