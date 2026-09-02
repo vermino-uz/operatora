@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Drawer, ListBox, Select, Tabs } from "@heroui/react";
+import { Drawer, ListBox, Select, Tabs } from "@heroui/react";
 
 import { useSessionStore } from "@/state/session-store";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -12,8 +12,6 @@ import { useTeamMembersQuery } from "@/features/team/hooks/useTeamMembersQuery";
 import { formatLeadName, isLeadOverdue, type LeadBoardColumn, type LeadRow } from "@/features/leads/types";
 import { CHANNEL_ICONS } from "@/features/leads/channelIcons";
 import { leadActionErrorMessage } from "@/features/leads/leadActionError";
-import { MarkSoldDialog } from "@/features/leads/components/MarkSoldDialog";
-import { MarkRejectedDialog } from "@/features/leads/components/MarkRejectedDialog";
 import { LeadAdditionalPhones } from "@/features/leads/components/LeadAdditionalPhones";
 import { LeadCustomFieldsSection } from "@/features/leads/components/LeadCustomFieldsSection";
 import { LeadCommentsTab } from "@/features/leads/components/LeadCommentsTab";
@@ -72,8 +70,6 @@ export function LeadDetailsModal({
   const moveLead = useMoveLeadMutation(boardId);
   const assignOperator = useAssignOperatorMutation(boardId);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [soldDialogOpen, setSoldDialogOpen] = useState(false);
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [tab, setTab] = useState<DetailsTab>("info");
 
   // Seed from the card's already-cached row so the modal never opens
@@ -82,11 +78,6 @@ export function LeadDetailsModal({
   const deadlineDate = lead.deadline ? new Date(lead.deadline) : null;
   const isOverdue = isLeadOverdue(lead.deadline);
   const channels = lead.connected_channels ?? [];
-  // Only a lead still in the active pipeline can be marked sold/rejected —
-  // a data-driven check (not tab-based, since this modal is reused from
-  // every list tab except Trash) so the actions never offer to re-sell an
-  // already-sold lead or re-reject an already-rejected one.
-  const canMarkOutcome = !lead.sold && !lead.rejected && !lead.deleted_at;
 
   const handleMoveColumn = (columnId: string) => {
     setActionError(null);
@@ -256,46 +247,8 @@ export function LeadDetailsModal({
               </div>
             </Drawer.Body>
           </Tabs>
-          <Drawer.Footer className="shrink-0 flex-wrap gap-2">
-            {canMarkOutcome ? (
-              <>
-                <Button variant="secondary" onPress={() => setRejectDialogOpen(true)}>
-                  Mark rejected
-                </Button>
-                <Button variant="primary" onPress={() => setSoldDialogOpen(true)}>
-                  Mark sold
-                </Button>
-              </>
-            ) : null}
-            <Button variant="secondary" onPress={onClose}>
-              Close
-            </Button>
-          </Drawer.Footer>
         </Drawer.Dialog>
       </Drawer.Content>
-
-      {soldDialogOpen ? (
-        <MarkSoldDialog
-          boardId={boardId}
-          lead={lead}
-          onClose={() => setSoldDialogOpen(false)}
-          onMarked={() => {
-            setSoldDialogOpen(false);
-            onClose();
-          }}
-        />
-      ) : null}
-      {rejectDialogOpen ? (
-        <MarkRejectedDialog
-          boardId={boardId}
-          lead={lead}
-          onClose={() => setRejectDialogOpen(false)}
-          onMarked={() => {
-            setRejectDialogOpen(false);
-            onClose();
-          }}
-        />
-      ) : null}
     </Drawer.Backdrop>
   );
 }
