@@ -40,6 +40,18 @@ export function useLeadSelection() {
           }
           return next;
         }),
+      addMany: (ids: string[]) =>
+        setSelected((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.add(id));
+          return next;
+        }),
+      removeMany: (ids: string[]) =>
+        setSelected((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        }),
       clear: () => setSelected(new Set()),
     }),
     [selected],
