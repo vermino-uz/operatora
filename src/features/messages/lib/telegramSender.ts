@@ -61,6 +61,11 @@ function nameFromTelegramFrom(from: TelegramMessageFrom | null | undefined): str
   return full || (from.username ? `@${from.username}` : null);
 }
 
+/** Display name from a message's `telegram_data.from` (groups, account mode). */
+export function telegramMessageFromDisplayName(message: TelegramMessage): string | null {
+  return nameFromTelegramFrom(extractTelegramMessageFrom(message));
+}
+
 export interface TelegramAccountSessionIdentity {
   first_name?: string | null;
   last_name?: string | null;

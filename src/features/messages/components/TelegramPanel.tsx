@@ -55,7 +55,8 @@ import {
   telegramMediaFallbackLabel,
 } from "@/features/messages/lib/telegramMedia";
 import { DaySeparator, groupMessagesByDay } from "@/features/messages/lib/messageDayGroups";
-import { resolveTelegramMessageSender, resolveOutboundOperatorMark, resolveTelegramAccountOutboundMark, pickAvatarColor } from "@/features/messages/lib/telegramSender";
+import { resolveTelegramMessageSender, resolveOutboundOperatorMark, resolveTelegramAccountOutboundMark, telegramMessageFromDisplayName, pickAvatarColor } from "@/features/messages/lib/telegramSender";
+import { telegramChatMatchesDeepLink, type TelegramMessageDeepLink } from "@/features/messages/lib/telegramDeepLink";
 import { buildTelegramMessageLink } from "@/features/messages/lib/telegramMessageLink";
 import { isTelegramGroupLikeChat } from "@/features/messages/lib/telegramUserAvatar";
 import {
@@ -166,9 +167,12 @@ function guessMessageKindFromFile(file: File): string {
 export function TelegramPanel({
   onUnreadChange,
   onChatOpenChange,
+  deepLink,
 }: {
   onUnreadChange?: (count: number) => void;
   onChatOpenChange?: (open: boolean) => void;
+  /** Open a chat and scroll to a Telegram message (`t.me/c/…/…`). */
+  deepLink?: TelegramMessageDeepLink | null;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -220,6 +224,9 @@ export function TelegramPanel({
   const [autoLeadOpen, setAutoLeadOpen] = useState(false);
   const [stickerPackSetName, setStickerPackSetName] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [highlightTelegramMessageId, setHighlightTelegramMessageId] = useState<number | null>(null);
+  const deepLinkHandledRef = useRef<string | null>(null);
+  const deepLinkScrolledRef = useRef<string | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const loadingOlderRef = useRef(false);
 
@@ -376,6 +383,32 @@ export function TelegramPanel({
     [messages],
   );
   const senderProfiles = useSenderProfileMap(outboundSenderIds, workspaceId ?? undefined);
+
+  useEffect(() => {
+    if (!deepLink || !rawChats.length) return;
+    const key = `${deepLink.internalChatId}:${deepLink.messageId}`;
+    if (deepLinkHandledRef.current === key) return;
+    const chat = rawChats.find((c) => telegramChatMatchesDeepLink(c.telegram_chat_id, deepLink.internalChatId));
+    if (!chat) return;
+    deepLinkHandledRef.current = key;
+    setSelectedChatId(chat.id);
+    onChatOpenChange?.(true);
+  }, [deepLink, onChatOpenChange, rawChats]);
+
+  useEffect(() => {
+    if (!deepLink || !selectedChatId || messagesQuery.isLoading) return;
+    const key = `${deepLink.internalChatId}:${deepLink.messageId}`;
+    if (deepLinkScrolledRef.current === key) return;
+    const target = allMessages.find((m) => m.telegram_message_id === deepLink.messageId);
+    if (!target) return;
+    deepLinkScrolledRef.current = key;
+    requestAnimationFrame(() => {
+      const el = messagesScrollRef.current?.querySelector(`[data-tg-msg="${deepLink.messageId}"]`);
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      setHighlightTelegramMessageId(deepLink.messageId);
+      window.setTimeout(() => setHighlightTelegramMessageId(null), 2400);
+    });
+  }, [allMessages, deepLink, messagesQuery.isLoading, selectedChatId]);
 
   const chatPhotoItems = useMemo((): PhotoLightboxItem[] => {
     if (!selectedChat) return [];
@@ -906,7 +939,15 @@ export function TelegramPanel({
     const parent = messages.find((msg) => msg.telegram_message_id === rid);
     if (!parent) return undefined;
     const text = (parent.text_content || "").trim() || `[${parent.message_kind || "message"}]`;
-    const author = parent.direction === "outbound" ? "You" : customerName;
+    let author = customerName;
+    if (parent.direction === "outbound") {
+      author =
+        selectedChat && isTelegramAccountChat(selectedChat)
+          ? resolveTelegramAccountOutboundMark(parent, senderProfiles, accountSession).senderName ?? "You"
+          : "You";
+    } else if (selectedChat && isTelegramGroupLikeChat(selectedChat, parent)) {
+      author = telegramMessageFromDisplayName(parent) ?? customerName;
+    }
     return { author, text: truncateQuote(text) };
   }
 
@@ -1718,6 +1759,11 @@ export function TelegramPanel({
                       onToggleSelect={() => toggleSelected(message.id)}
                       onPhotoClick={kind === "photo" && mediaUrl ? () => openPhotoLightbox(message.id) : undefined}
                       phoneActions={phoneActions}
+                      telegramMessageId={message.telegram_message_id}
+                      highlighted={
+                        highlightTelegramMessageId != null &&
+                        message.telegram_message_id === highlightTelegramMessageId
+                      }
                       wrapBubble={(bubble) => (
                         <TelegramMessageMenu
                           message={message}

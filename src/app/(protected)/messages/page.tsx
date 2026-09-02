@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { useSessionStore } from "@/state/session-store";
 import { useMyWorkspacePermissionsQuery } from "@/features/roles/hooks/useWorkspaceRolesQuery";
@@ -12,6 +13,7 @@ import { InstagramPanel } from "@/features/messages/components/InstagramPanel";
 import { SmsPanel } from "@/features/messages/components/SmsPanel";
 import { TeamChatPanel } from "@/features/messages/components/TeamChatPanel";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { parseTelegramMessageDeepLink } from "@/features/messages/lib/telegramDeepLink";
 import type { ChannelKey } from "@/features/messages/types";
 
 /**
@@ -33,9 +35,27 @@ import type { ChannelKey } from "@/features/messages/types";
  * shell — see PROGRESS.md) rather than porting the old app's styling.
  */
 export default function MessagesPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading Messages…" className="flex-1" />}>
+      <MessagesPageContent />
+    </Suspense>
+  );
+}
+
+function MessagesPageContent() {
+  const searchParams = useSearchParams();
+  const telegramDeepLink = useMemo(() => {
+    const url = searchParams.get("tg");
+    if (url) return parseTelegramMessageDeepLink(url);
+    const chat = searchParams.get("tg_chat");
+    const msg = searchParams.get("tg_msg");
+    if (chat && msg) return parseTelegramMessageDeepLink(`${chat}/${msg}`);
+    return null;
+  }, [searchParams]);
+
   const workspaceId = useSessionStore((s) => s.workspaceId);
   const [topTab, setTopTab] = useState<"inbox" | "team">("inbox");
-  const [channel, setChannel] = useState<ChannelKey>("telegram");
+  const [channel, setChannel] = useState<ChannelKey>(telegramDeepLink ? "telegram" : "telegram");
   const [telegramUnread, setTelegramUnread] = useState(0);
   const [instagramUnread, setInstagramUnread] = useState(0);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -79,7 +99,11 @@ export default function MessagesPage() {
             />
             {channel === "telegram" ? (
               canViewTelegram ? (
-                <TelegramPanel onUnreadChange={setTelegramUnread} onChatOpenChange={setMobileChatOpen} />
+                <TelegramPanel
+                  onUnreadChange={setTelegramUnread}
+                  onChatOpenChange={setMobileChatOpen}
+                  deepLink={telegramDeepLink}
+                />
               ) : (
                 <LockedChannel name="Telegram" />
               )

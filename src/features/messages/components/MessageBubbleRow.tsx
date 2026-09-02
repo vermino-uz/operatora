@@ -140,6 +140,10 @@ export interface MessageBubbleRowProps {
   onStickerClick?: () => void;
   /** Clickable phone numbers in message text — Telegram linked-account actions. */
   phoneActions?: PhoneNumberActions | null;
+  /** Telegram's numeric message id — used for deep-link scroll targets. */
+  telegramMessageId?: number | null;
+  /** Brief highlight ring when navigating from a `t.me/c/…/…` link. */
+  highlighted?: boolean;
 }
 
 /** Shared inbound/outbound text bubble for every Messages channel —
@@ -178,6 +182,8 @@ export function MessageBubbleRow({
   avatarChat,
   onStickerClick,
   phoneActions,
+  telegramMessageId,
+  highlighted = false,
 }: MessageBubbleRowProps) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -538,7 +544,10 @@ export function MessageBubbleRow({
   }
 
   return (
-    <div className={`flex w-full px-4 py-1 ${isOutbound ? "justify-end" : "justify-start"}`}>
+    <div
+      className={`flex w-full px-4 py-1 transition-shadow ${isOutbound ? "justify-end" : "justify-start"} ${highlighted ? "rounded-xl ring-2 ring-accent/60 ring-offset-2 ring-offset-background" : ""}`}
+      {...(telegramMessageId != null ? { "data-tg-msg": telegramMessageId } : {})}
+    >
       {!isOutbound && (senderName || inboundAvatar) ? (
         <div className="flex max-w-[min(100%,360px)] flex-col items-start">
           {senderName ? (
