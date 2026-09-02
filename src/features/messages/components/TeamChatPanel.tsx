@@ -7,10 +7,9 @@ import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useSessionStore } from "@/state/session-store";
-import { MessageBubbleRow } from "@/features/messages/components/MessageBubbleRow";
+import { TeamChatMessageRow, isTeamChatContinuation } from "@/features/messages/components/TeamChatMessageRow";
 import { TextComposer } from "@/features/messages/components/TextComposer";
 import { DaySeparator, groupMessagesByDay } from "@/features/messages/lib/messageDayGroups";
-import { profileName } from "@/features/messages/types";
 import {
   useTeamChatChannelsQuery,
   useTeamChatFeedQuery,
@@ -114,18 +113,19 @@ export function TeamChatPanel({ onChatOpenChange }: { onChatOpenChange?: (open: 
                 messageDayGroups.map((group) => (
                   <div key={group.label}>
                     <DaySeparator label={group.label} />
-                    {group.items.map((message) => (
-                      <div key={message.id} className="px-4 py-1">
-                        <p className="mb-0.5 px-0 text-[11px] font-medium text-foreground/50">
-                          {profileName(profileById.get(message.sender_id), message.sender_id)}
-                        </p>
-                        <MessageBubbleRow
-                          content={message.content || "(attachment)"}
-                          direction={message.sender_id === userId ? "outbound" : "inbound"}
-                          timestamp={message.created_at}
-                        />
-                      </div>
-                    ))}
+                    {group.items.map((message, idx) => {
+                      const prev = idx > 0 ? group.items[idx - 1] : null;
+                      return (
+                        <div key={message.id} className="px-4">
+                          <TeamChatMessageRow
+                            message={message}
+                            profile={profileById.get(message.sender_id)}
+                            isOwn={message.sender_id === userId}
+                            isContinuation={isTeamChatContinuation(prev, message)}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 ))
               )}
