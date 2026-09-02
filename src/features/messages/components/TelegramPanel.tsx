@@ -55,7 +55,7 @@ import {
   telegramMediaFallbackLabel,
 } from "@/features/messages/lib/telegramMedia";
 import { DaySeparator, groupMessagesByDay } from "@/features/messages/lib/messageDayGroups";
-import { resolveTelegramMessageSender, resolveOutboundOperatorMark, pickAvatarColor } from "@/features/messages/lib/telegramSender";
+import { resolveTelegramMessageSender, resolveOutboundOperatorMark, resolveTelegramAccountOutboundMark, pickAvatarColor } from "@/features/messages/lib/telegramSender";
 import { buildTelegramMessageLink } from "@/features/messages/lib/telegramMessageLink";
 import { isTelegramGroupLikeChat } from "@/features/messages/lib/telegramUserAvatar";
 import {
@@ -63,6 +63,7 @@ import {
   isTelegramChannelChat,
   isTelegramGroupChat,
   isTelegramPrivateChat,
+  isTelegramAccountChat,
   telegramChatAvatarUrl,
   telegramChatName,
   telegramMessageMediaUrl,
@@ -1678,9 +1679,14 @@ export function TelegramPanel({
                     ? resolveTelegramMessageSender(message, selectedChat)
                     : {};
                   const isAgentMsg = message.direction === "outbound" && message.metadata?.ai_generated === true;
+                  const useAccountOperatorMark =
+                    connectionMode === "user_account" &&
+                    Boolean(selectedChat && isTelegramAccountChat(selectedChat));
                   const operatorMark =
                     message.direction === "outbound" && !isAgentMsg
-                      ? resolveOutboundOperatorMark(message.sender_id ?? undefined, senderProfiles)
+                      ? useAccountOperatorMark
+                        ? resolveTelegramAccountOutboundMark(message, senderProfiles, accountSession)
+                        : resolveOutboundOperatorMark(message.sender_id ?? undefined, senderProfiles)
                       : {};
                   const stickerSetName = kind === "sticker" ? resolveStickerSetName(message) : null;
                   const messageLink = buildTelegramMessageLink(selectedChat, message);

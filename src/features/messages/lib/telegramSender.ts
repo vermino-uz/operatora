@@ -61,6 +61,49 @@ function nameFromTelegramFrom(from: TelegramMessageFrom | null | undefined): str
   return full || (from.username ? `@${from.username}` : null);
 }
 
+export interface TelegramAccountSessionIdentity {
+  first_name?: string | null;
+  last_name?: string | null;
+  telegram_username?: string | null;
+}
+
+/** Outbound label for linked Telegram account sends — prefer Telegram identity over workspace profile. */
+export function resolveTelegramAccountOutboundMark(
+  message: TelegramMessage,
+  profiles: Record<string, { name: string; initials: string }>,
+  accountSession?: TelegramAccountSessionIdentity | null,
+): { senderName?: string; outboundAvatar?: TelegramOutboundAvatar } {
+  const from = extractTelegramMessageFrom(message);
+  const tgName = nameFromTelegramFrom(from);
+  if (tgName) {
+    const seed = String(from?.id ?? tgName);
+    return {
+      senderName: tgName,
+      outboundAvatar: {
+        color: pickAvatarColor(seed, OPERATOR_AVATAR_PALETTE),
+        initials: initialsFor(tgName),
+      },
+    };
+  }
+
+  if (accountSession) {
+    const sessionName =
+      [accountSession.first_name, accountSession.last_name].filter(Boolean).join(" ").trim() ||
+      (accountSession.telegram_username ? `@${accountSession.telegram_username}` : null);
+    if (sessionName) {
+      return {
+        senderName: sessionName,
+        outboundAvatar: {
+          color: pickAvatarColor(sessionName, OPERATOR_AVATAR_PALETTE),
+          initials: initialsFor(sessionName),
+        },
+      };
+    }
+  }
+
+  return resolveOutboundOperatorMark(message.sender_id ?? undefined, profiles);
+}
+
 /** Inbound sender label + avatar for Telegram group and private threads. */
 export function resolveTelegramMessageSender(
   message: TelegramMessage,
