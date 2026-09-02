@@ -27,6 +27,18 @@ import { LeadAiAssistTab } from "@/features/leads/components/LeadAiAssistTab";
 
 type DetailsTab = "info" | "comments" | "timeline" | "tags" | "conversations" | "sms" | "tasks" | "stats" | "ai";
 
+const DETAIL_TABS = [
+  ["info", "Info"],
+  ["comments", "Comments"],
+  ["timeline", "Timeline"],
+  ["tags", "Tags"],
+  ["conversations", "Conversations"],
+  ["sms", "SMS"],
+  ["tasks", "Tasks"],
+  ["stats", "Stats"],
+  ["ai", "AI Assist"],
+] as const satisfies ReadonlyArray<[DetailsTab, string]>;
+
 /**
  * Real (not stub) lead details view — HeroUI `Drawer` sliding in from the
  * right edge, now a tabbed panel (Phase 2c-4): Info (core fields, unchanged
@@ -88,10 +100,10 @@ export function LeadDetailsModal({
 
   return (
     <Drawer.Backdrop isOpen onOpenChange={(open) => !open && onClose()}>
-      <Drawer.Content placement="right">
-        <Drawer.Dialog className="w-full max-w-2xl">
+      <Drawer.Content placement="right" className="w-full max-w-2xl">
+        <Drawer.Dialog className="flex h-full max-h-[100dvh] flex-col">
           <Drawer.CloseTrigger />
-          <Drawer.Header>
+          <Drawer.Header className="shrink-0">
             <Drawer.Heading className="flex items-center gap-2">
               {formatLeadName(lead)}
               {channels.length > 0 ? (
@@ -106,29 +118,25 @@ export function LeadDetailsModal({
               ) : null}
             </Drawer.Heading>
           </Drawer.Header>
-          <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(key as DetailsTab)}>
-            <Tabs.List className="mx-6 mb-1 gap-0.5 overflow-x-auto rounded-lg border border-black/[0.08] p-0.5 dark:border-white/[0.12]">
-              {(
-                [
-                  ["info", "Info"],
-                  ["comments", "Comments"],
-                  ["timeline", "Timeline"],
-                  ["tags", "Tags"],
-                  ["conversations", "Conversations"],
-                  ["sms", "SMS"],
-                  ["tasks", "Tasks"],
-                  ["stats", "Stats"],
-                  ["ai", "AI Assist"],
-                ] as const
-              ).map(([id, label]) => (
-                <Tabs.Tab key={id} id={id} className="data-[selected=true]:text-accent-soft-foreground">
+          <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(key as DetailsTab)} className="flex min-h-0 flex-1 flex-col">
+            <Tabs.List
+              aria-label="Lead details sections"
+              className="mx-4 mb-2 flex shrink-0 flex-wrap gap-1 rounded-lg border border-black/[0.08] bg-[var(--default)]/50 p-1 dark:border-white/[0.12]"
+            >
+              {DETAIL_TABS.map(([id, label]) => (
+                <Tabs.Tab
+                  key={id}
+                  id={id}
+                  className="shrink-0 px-2.5 py-1.5 text-xs font-medium data-[selected=true]:text-accent-soft-foreground sm:text-sm"
+                >
                   {label}
                   <Tabs.Indicator className="bg-accent-soft" />
                 </Tabs.Tab>
               ))}
             </Tabs.List>
 
-            <Drawer.Body className="flex flex-col gap-4">
+            <Drawer.Body className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="flex flex-col gap-4">
               {detailQuery.isError ? <ErrorState error={detailQuery.error} onRetry={() => detailQuery.refetch()} /> : null}
               {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
 
@@ -245,9 +253,10 @@ export function LeadDetailsModal({
               {tab === "ai" ? (
                 <LeadAiAssistTab leadId={lead.id} leadName={formatLeadName(lead)} isActive={tab === "ai"} />
               ) : null}
+              </div>
             </Drawer.Body>
           </Tabs>
-          <Drawer.Footer className="flex-wrap gap-2">
+          <Drawer.Footer className="shrink-0 flex-wrap gap-2">
             {canMarkOutcome ? (
               <>
                 <Button variant="secondary" onPress={() => setRejectDialogOpen(true)}>

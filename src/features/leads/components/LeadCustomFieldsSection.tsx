@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@heroui/react";
-import { Pencil } from "@gravity-ui/icons";
+import { useEffect, useState } from "react";
+import { Spinner } from "@heroui/react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useLeadCustomFieldsQuery } from "@/features/leads/hooks/useLeadCustomFields";
 import { CustomFieldValue } from "@/features/leads/components/CustomFieldValue";
@@ -14,63 +14,44 @@ import {
   coerceCustomFieldValue,
   validateCustomFieldValue,
   INTERNAL_LEAD_CUSTOM_FIELD_KEY,
+  type LeadCustomFieldDef,
 } from "@/features/leads/customFieldTypes";
 import { useSessionStore } from "@/state/session-store";
 import type { LeadRow } from "@/features/leads/types";
-import { useQueryClient } from "@tanstack/react-query";
 import { leadQueryKey } from "@/features/leads/hooks/useLeadDetailsQuery";
 
-/**
- * Type-aware custom-fields section for `LeadDetailsModal`'s Info tab
- * (Phase 2c-6) — replaces the earlier Phase 2b/2c-5 generic key/value dump
- * of `lead.custom_fields` (which had no type/label metadata to render
- * anything smarter). Read-only by default (`CustomFieldValue`, resolves
- * relation/rollup/formula/computed types for real); an "Edit" toggle
- * switches every non-computed field into its real input widget
- * (`CustomFieldInput`) with one shared Save, writing the whole
- * `custom_fields` object in one `PATCH /leads/:id` — same batch-write
- * pattern `RequireFieldDialog` already established, rather than a
- * per-field save round trip.
- */
-export function LeadCustomFieldsSection({ lead }: { lead: LeadRow }) {
-  const customFieldsQuery = useLeadCustomFieldsQuery();
+const SAVE_ON_CHANGE = new Set(["select", "status", "checkbox", "multi_select", "date", "relation"]);
+
+function InlineCustomFieldRow({ def, lead }: { def: LeadCustomFieldDef; lead: LeadRow }) {
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [values, setValues] = useState<Record<string, unknown>>({});
-  const [error, setError] = useState<string | null>(null);
+  const initial = (lead.custom_fields as Record<string, unknown> | null | undefined)?.[def.field_name];
+  const [value, setValue] = useState<unknown>(initial);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fields = customFieldsQuery.data ?? [];
-  if (fields.length === 0) return null;
+  useEffect(() => {
+    setValue(initial);
+  }, [initial, lead.id]);
 
-  function startEdit() {
-    setError(null);
-    setValues({ ...(lead.custom_fields ?? {}) });
-    setEditing(true);
-  }
-
-  async function handleSave() {
-    if (saving) return; // guard double-submit
-    setError(null);
-    for (const def of fields) {
-      if (COMPUTED_TYPES.has(def.field_type)) continue;
-      const err = validateCustomFieldValue(def, values[def.field_name]);
-      if (err) {
-        setError(`${def.field_name}: ${err}`);
-        return;
-      }
+  async function persist(next: unknown) {
+    const validationError = validateCustomFieldValue(def, next);
+    if (validationError) {
+      setError(validationError);
+      return;
     }
+
+    const coerced = coerceCustomFieldValue(def.field_type, next);
+    const current = coerceCustomFieldValue(def.field_type, initial);
+    if (JSON.stringify(coerced) === JSON.stringify(current)) return;
+
     setSaving(true);
+    setError(null);
     try {
-      const next: Record<string, unknown> = { ...(lead.custom_fields ?? {}) };
-      for (const def of fields) {
-        if (COMPUTED_TYPES.has(def.field_type)) continue;
-        next[def.field_name] = coerceCustomFieldValue(def.field_type, values[def.field_name]);
-      }
-      next[INTERNAL_LEAD_CUSTOM_FIELD_KEY] = useSessionStore.getState().user?.id ?? null;
-      await leadsApi.patchLead(lead.id, { custom_fields: next });
+      const nextCustomFields: Record<string, unknown> = { ...(lead.custom_fields ?? {}) };
+      nextCustomFields[def.field_name] = coerced;
+      nextCustomFields[INTERNAL_LEAD_CUSTOM_FIELD_KEY] = useSessionStore.getState().user?.id ?? null;
+      await leadsApi.patchLead(lead.id, { custom_fields: nextCustomFields });
       await queryClient.invalidateQueries({ queryKey: leadQueryKey(lead.id) });
-      setEditing(false);
     } catch (err) {
       setError(leadActionErrorMessage(err));
     } finally {
@@ -78,60 +59,64 @@ export function LeadCustomFieldsSection({ lead }: { lead: LeadRow }) {
     }
   }
 
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <p className="text-xs text-foreground/50">Custom fields</p>
-        {!editing ? (
-          <Button variant="ghost" size="sm" onPress={startEdit}>
-            <Pencil className="size-3 shrink-0" aria-hidden="true" />
-            Edit
-          </Button>
-        ) : null}
-      </div>
+  function handleChange(next: unknown) {
+    setValue(next);
+    if (SAVE_ON_CHANGE.has(def.field_type)) void persist(next);
+  }
 
-      {editing ? (
-        <div className="flex flex-col gap-3">
-          {fields.map((def) => (
-            <div key={def.id}>
-              <p className="mb-1 text-xs text-foreground/50">{def.field_name}</p>
-              {COMPUTED_TYPES.has(def.field_type) ? (
-                <CustomFieldValue def={def} lead={lead} />
-              ) : (
-                <CustomFieldInput
-                  def={def}
-                  value={values[def.field_name]}
-                  onChange={(next) => setValues((prev) => ({ ...prev, [def.field_name]: next }))}
-                />
-              )}
-            </div>
-          ))}
-          {error ? (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          ) : null}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" isDisabled={saving} onPress={() => setEditing(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" size="sm" isDisabled={saving} onPress={() => void handleSave()}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </div>
+  if (COMPUTED_TYPES.has(def.field_type)) {
+    return (
+      <div className="min-w-0">
+        <p className="mb-1 text-xs text-foreground/50">{def.field_name}</p>
+        <div className="text-sm text-foreground">
+          <CustomFieldValue def={def} lead={lead} compact />
         </div>
-      ) : (
-        <dl className="grid grid-cols-2 gap-2 text-sm">
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="min-w-0"
+      onBlur={(e) => {
+        if (SAVE_ON_CHANGE.has(def.field_type)) return;
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) void persist(value);
+      }}
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <p className="truncate text-xs text-foreground/50">{def.field_name}</p>
+        {saving ? <Spinner size="sm" aria-label="Saving" /> : null}
+      </div>
+      <CustomFieldInput def={def} value={value} onChange={handleChange} isInvalid={Boolean(error)} />
+      {error ? (
+        <p role="alert" className="mt-1 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Custom fields on the lead details Info tab — always editable inline (old
+ * UI parity: click/type to edit, no separate Edit mode). The list scrolls
+ * independently when there are many fields.
+ */
+export function LeadCustomFieldsSection({ lead }: { lead: LeadRow }) {
+  const customFieldsQuery = useLeadCustomFieldsQuery();
+  const fields = customFieldsQuery.data ?? [];
+  if (fields.length === 0) return null;
+
+  return (
+    <div className="flex min-h-0 flex-col">
+      <p className="mb-2 text-xs text-foreground/50">Custom fields</p>
+      <div className="min-h-0 max-h-[min(480px,50vh)] overflow-y-auto overscroll-contain rounded-xl border border-black/[0.08] bg-[var(--default)]/40 p-3 dark:border-white/[0.12]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {fields.map((def) => (
-            <div key={def.id} className="min-w-0">
-              <dt className="truncate text-xs text-foreground/50">{def.field_name}</dt>
-              <dd className="truncate text-foreground">
-                <CustomFieldValue def={def} lead={lead} compact />
-              </dd>
-            </div>
+            <InlineCustomFieldRow key={def.id} def={def} lead={lead} />
           ))}
-        </dl>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
