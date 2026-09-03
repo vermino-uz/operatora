@@ -19,15 +19,17 @@ This Cloud Agent VM only has `vermino-uz/operatora` (new UI). Copy these files i
 |---|---|
 | `app/backend/src/billing/plan-features.catalog.EXTENSION.ts` | Extend NumericLimitKey / PlanLimits / PlanFeatureSet |
 | `app/backend/src/billing/PLAN_LIMITS_CHANGES.md` | `incrementUsage(amount)`, getNumericLimit/getUsageCount |
+| `app/backend/src/billing/BILLING_ME_CHANGES.md` | Expose `limits/usage.credits_*` + `ai_feature_models` on GET /billing/me |
 | `WIRE_CALL_SITES.ts` | Per-feature file map + assert→LLM→consume pattern |
+| `APPLY_STATUS.md` | Host search results + what is still blocked |
 
 ## Integration checklist
 
-1. Copy drop-in files.
+1. Copy drop-in files onto a NestJS checkout under `/www/wwwroot` (prefer test/staging).
 2. Apply catalog + PlanLimitsService merges; register `AiCreditsService` in `BillingModule`.
 3. Confirm admin tariff GET/PUT round-trip `limits.credits_*` + `features.ai_feature_models`.
-4. Wire call sites from `WIRE_CALL_SITES.ts` (Phases 2–3).
-5. Extend `GET /billing/me` with credit usage/limits + `ai_feature_models` (new UI already parses).
+4. Wire call sites from `WIRE_CALL_SITES.ts` (Phases 2–3) by mirroring existing `AiUsageService` / `PlanLimitsService` patterns — do not invent call sites.
+5. Extend `GET /billing/me` per `BILLING_ME_CHANGES.md`.
 6. Commit message must include `[migrate]`; deploy test → beta → prod.
 
 ## Credit math
