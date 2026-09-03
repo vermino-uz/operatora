@@ -14,6 +14,7 @@ export const ROUTES = {
   login: "/login",
   signup: "/signup",
   admin: "/admin",
+  adminTariffs: "/admin/tariffs",
   doc: "/doc",
   settings: "/settings",
   /** Standalone Meta OAuth popup landing page — see

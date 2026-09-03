@@ -4,28 +4,56 @@ import Link from "next/link";
 import { Chip } from "@heroui/react";
 import { ArrowUpRight } from "@gravity-ui/icons";
 
-import type { BillingFeatures } from "@/features/team/types";
+import {
+  AI_FEATURE_KEYS,
+  AI_FEATURE_LABELS,
+  creditLimitKey,
+  type AiFeatureKey,
+} from "@/features/ai-credits/catalog";
+import type { BillingFeatures, BillingUsage, PlanLimits } from "@/features/team/types";
 
 function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | null }) {
   const hasLimit = typeof limit === "number" && limit > 0;
+  const featureOff = limit === 0;
   const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const atLimit = hasLimit && used >= limit;
   return (
     <div className="rounded-xl border border-black/[0.08] p-4 dark:border-white/[0.12]">
       <div className="mb-2 flex items-center justify-between gap-3">
         <span className="text-sm font-semibold">{label}</span>
-        <span className={`text-xs font-medium ${atLimit ? "text-danger" : "text-foreground/50"}`}>
-          {used.toLocaleString()} / {hasLimit ? limit!.toLocaleString() : "∞"}
+        <span className={`text-xs font-medium ${atLimit || featureOff ? "text-danger" : "text-foreground/50"}`}>
+          {featureOff
+            ? "Off"
+            : `${used.toLocaleString()} / ${hasLimit ? limit!.toLocaleString() : "∞"}`}
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
         <div
-          className={`h-full rounded-full transition-all ${atLimit ? "bg-danger" : "bg-primary"}`}
-          style={{ width: hasLimit ? `${pct}%` : "6%" }}
+          className={`h-full rounded-full transition-all ${atLimit || featureOff ? "bg-danger" : "bg-primary"}`}
+          style={{ width: featureOff ? "100%" : hasLimit ? `${pct}%` : "6%" }}
         />
       </div>
     </div>
   );
+}
+
+function creditUsed(usage: BillingUsage, feature: AiFeatureKey): number {
+  const key = creditLimitKey(feature);
+  const raw = usage[key as keyof BillingUsage];
+  return typeof raw === "number" ? raw : 0;
+}
+
+function creditLimit(limits: PlanLimits, feature: AiFeatureKey): number | null {
+  const key = creditLimitKey(feature);
+  const raw = limits[key as keyof PlanLimits];
+  if (raw === undefined) return null;
+  return raw;
+}
+
+/** Prefer credit meters when the backend has started returning them; fall back
+ * to legacy invocation counters so older `/billing/me` payloads still render. */
+function hasAnyCreditLimits(limits: PlanLimits): boolean {
+  return AI_FEATURE_KEYS.some((f) => limits[creditLimitKey(f)] !== undefined);
 }
 
 const ACCESS_LABEL: Record<BillingFeatures["access"], { text: string; color: "success" | "warning" | "danger" }> = {
@@ -40,6 +68,7 @@ export function OverviewTab({ billing, onGoInvoices }: { billing: BillingFeature
     ? new Date(billing.subscriptionEndsAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
     : null;
   const needsRenew = billing.access === "grace" || billing.access === "read_only";
+  const showCredits = hasAnyCreditLimits(billing.limits);
 
   return (
     <div className="space-y-5">
@@ -77,8 +106,14 @@ export function OverviewTab({ billing, onGoInvoices }: { billing: BillingFeature
 
       <div className="grid gap-3 sm:grid-cols-2">
         <UsageBar label="Calls this period" used={billing.usage.calls_per_month ?? 0} limit={billing.limits.calls_per_month} />
-        <UsageBar label="AI chat messages" used={billing.usage.ai_chat_messages ?? 0} limit={billing.limits.ai_chat_messages} />
         <UsageBar label="Storage (MB)" used={billing.usage.storage_mb} limit={billing.limits.storage_mb} />
+        {!showCredits ? (
+          <UsageBar
+            label="AI chat messages"
+            used={billing.usage.ai_chat_messages ?? 0}
+            limit={billing.limits.ai_chat_messages}
+          />
+        ) : null}
         <div className="rounded-xl border border-black/[0.08] p-4 dark:border-white/[0.12]">
           <p className="text-sm font-semibold">Operator seats</p>
           <p className="mt-2 text-xs text-foreground/50">
@@ -89,6 +124,22 @@ export function OverviewTab({ billing, onGoInvoices }: { billing: BillingFeature
         </div>
       </div>
 
+      {showCredits ? (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold tracking-wide text-foreground/50 uppercase">AI credits this period</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {AI_FEATURE_KEYS.map((feature) => (
+              <UsageBar
+                key={feature}
+                label={AI_FEATURE_LABELS[feature]}
+                used={creditUsed(billing.usage, feature)}
+                limit={creditLimit(billing.limits, feature)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {billing.channels && billing.channels.length > 0 ? (
         <div className="rounded-xl border border-black/[0.08] p-4 text-sm text-foreground/70 dark:border-white/[0.12]">
           <span className="font-semibold text-foreground">Channels: </span>
@@ -98,7 +149,9 @@ export function OverviewTab({ billing, onGoInvoices }: { billing: BillingFeature
       ) : null}
 
       <p className="text-xs leading-relaxed text-foreground/50">
-        Usage counters reset each billing period. Contact support if a limit needs a one-off exception.
+        {showCredits
+          ? "AI credits are token/cost-weighted and reset each billing period. Models are fixed per plan in admin Tariffs."
+          : "Usage counters reset each billing period. Contact support if a limit needs a one-off exception."}
       </p>
     </div>
   );

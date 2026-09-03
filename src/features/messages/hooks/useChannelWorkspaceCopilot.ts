@@ -170,7 +170,7 @@ export function useChannelWorkspaceCopilot(
         {
           query: `${buildContextLine(ctx)}${query}`,
           conversationHistory: history.slice(0, -1),
-          model,
+          feature: "ai_chat",
           aiMsgId,
           workspaceId,
         },
@@ -178,7 +178,7 @@ export function useChannelWorkspaceCopilot(
         controller.signal,
       );
     },
-    [workspaceId, isSending, messages, model, handleSseEvent, handleTransportError],
+    [workspaceId, isSending, messages, handleSseEvent, handleTransportError],
   );
 
   return {

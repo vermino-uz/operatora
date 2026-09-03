@@ -27,6 +27,8 @@ export interface ChatComposerProps {
   model: ChatModelId;
   onModelChange: (model: ChatModelId) => void;
   allowedModels?: ChatModelOverride[];
+  /** When true (default), hide the model picker — plan fixes the model server-side. */
+  hideModelPicker?: boolean;
 }
 
 /** Adapted from the HeroUI Pro template's `chat-composer.tsx` (PromptInput
@@ -44,6 +46,7 @@ export function ChatComposer({
   model,
   onModelChange,
   allowedModels,
+  hideModelPicker = true,
 }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const [attachedLead, setAttachedLead] = useState<LeadSearchResult | null>(null);
@@ -145,38 +148,40 @@ export function ChatComposer({
               <Target className="size-4" aria-hidden="true" />
             </IconButton>
 
-            <Select
-              aria-label="Model"
-              value={model}
-              onChange={(key) => {
-                if (typeof key === "string") onModelChange(key as ChatModelId);
-              }}
-              isDisabled={isSending || disabled}
-              variant="secondary"
-              className="w-40"
-            >
-              <Select.Trigger>
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                {/* React Aria's "dynamic collection" API (`items` + render-prop
-                    child) — using a plain `.map()` of JSX here (the "static
-                    collection" form, meant for hardcoded fixed items) is what
-                    triggered the "missing key" warning, since RAC builds its
-                    off-screen Collection separately from normal React
-                    reconciliation and doesn't reliably pick up a `key` from
-                    mapped JSX for a data-driven list. */}
-                <ListBox items={modelOptions}>
-                  {(opt) => (
-                    <ListBox.Item id={opt.id} textValue={opt.label}>
-                      {opt.label}
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                  )}
-                </ListBox>
-              </Select.Popover>
-            </Select>
+            {!hideModelPicker ? (
+              <Select
+                aria-label="Model"
+                value={model}
+                onChange={(key) => {
+                  if (typeof key === "string") onModelChange(key as ChatModelId);
+                }}
+                isDisabled={isSending || disabled}
+                variant="secondary"
+                className="w-40"
+              >
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  {/* React Aria's "dynamic collection" API (`items` + render-prop
+                      child) — using a plain `.map()` of JSX here (the "static
+                      collection" form, meant for hardcoded fixed items) is what
+                      triggered the "missing key" warning, since RAC builds its
+                      off-screen Collection separately from normal React
+                      reconciliation and doesn't reliably pick up a `key` from
+                      mapped JSX for a data-driven list. */}
+                  <ListBox items={modelOptions}>
+                    {(opt) => (
+                      <ListBox.Item id={opt.id} textValue={opt.label}>
+                        {opt.label}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    )}
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            ) : null}
           </div>
 
           {isSending ? (

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:ai-credits": "npx --yes tsx scripts/verify-ai-credits.mts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -198,7 +198,10 @@ async function authorizedStreamRequest(
 export interface SendChatMessageParams {
   query: string;
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Ignored when the plan uses a fixed feature model — backend clamps. */
   model?: ChatModelId;
+  /** Which AI feature budget to charge (`ai_chat` default, `ai_ads_copilot` for Ads). */
+  feature?: "ai_chat" | "ai_ads_copilot";
   language?: "uz" | "ru" | "en";
   threadId?: string;
   aiMsgId?: string;
@@ -224,6 +227,7 @@ export async function streamChatMessage(
           query: params.query,
           conversation_history: params.conversationHistory,
           model: params.model,
+          feature: params.feature ?? "ai_chat",
           language: params.language,
           threadId: params.threadId,
           aiMsgId: params.aiMsgId,

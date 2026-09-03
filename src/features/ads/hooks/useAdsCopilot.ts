@@ -61,7 +61,7 @@ export function useAdsCopilot(workspaceId: string | null) {
         {
           query: `${contextLine(campaigns, isSample)}${q}`,
           conversationHistory: history,
-          model: "auto",
+          feature: "ai_ads_copilot",
           workspaceId,
         },
         {

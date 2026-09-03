@@ -275,7 +275,7 @@ export function useChatController({ workspaceId }: UseChatControllerOptions) {
         {
           query,
           conversationHistory,
-          model,
+          feature: "ai_chat",
           threadId,
           aiMsgId,
           sourceMediaId,
@@ -292,7 +292,6 @@ export function useChatController({ workspaceId }: UseChatControllerOptions) {
       activeThread,
       createThread,
       queryClient,
-      model,
       handleSseEvent,
       handleTransportError,
       setActiveThread,

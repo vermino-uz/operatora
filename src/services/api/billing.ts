@@ -42,6 +42,18 @@ export const billingApi = {
         max_operators: limits.max_operators ?? null,
         storage_mb: limits.storage_mb ?? null,
         storage_retention_days: limits.storage_retention_days ?? null,
+        credits_ai_chat: limits.credits_ai_chat ?? null,
+        credits_ai_transcript: limits.credits_ai_transcript ?? null,
+        credits_ai_conversation: limits.credits_ai_conversation ?? null,
+        credits_ai_agent_reply: limits.credits_ai_agent_reply ?? null,
+        credits_ai_agent_suggest: limits.credits_ai_agent_suggest ?? null,
+        credits_ai_inbox_recap: limits.credits_ai_inbox_recap ?? null,
+        credits_ai_agent_copilot: limits.credits_ai_agent_copilot ?? null,
+        credits_ai_ranker: limits.credits_ai_ranker ?? null,
+        credits_ai_lead_distribution: limits.credits_ai_lead_distribution ?? null,
+        credits_ai_lead_assist: limits.credits_ai_lead_assist ?? null,
+        credits_ai_custom_dashboard: limits.credits_ai_custom_dashboard ?? null,
+        credits_ai_ads_copilot: limits.credits_ai_ads_copilot ?? null,
       },
       usage: {
         storage_mb: Number(usage.storage_mb) || 0,
@@ -50,12 +62,42 @@ export const billingApi = {
         ai_dashboards: usage.ai_dashboards == null ? undefined : Number(usage.ai_dashboards) || 0,
         custom_dashboards: usage.custom_dashboards == null ? undefined : Number(usage.custom_dashboards) || 0,
         image_generations: usage.image_generations == null ? undefined : Number(usage.image_generations) || 0,
+        credits_ai_chat: usage.credits_ai_chat == null ? undefined : Number(usage.credits_ai_chat) || 0,
+        credits_ai_transcript:
+          usage.credits_ai_transcript == null ? undefined : Number(usage.credits_ai_transcript) || 0,
+        credits_ai_conversation:
+          usage.credits_ai_conversation == null ? undefined : Number(usage.credits_ai_conversation) || 0,
+        credits_ai_agent_reply:
+          usage.credits_ai_agent_reply == null ? undefined : Number(usage.credits_ai_agent_reply) || 0,
+        credits_ai_agent_suggest:
+          usage.credits_ai_agent_suggest == null ? undefined : Number(usage.credits_ai_agent_suggest) || 0,
+        credits_ai_inbox_recap:
+          usage.credits_ai_inbox_recap == null ? undefined : Number(usage.credits_ai_inbox_recap) || 0,
+        credits_ai_agent_copilot:
+          usage.credits_ai_agent_copilot == null ? undefined : Number(usage.credits_ai_agent_copilot) || 0,
+        credits_ai_ranker: usage.credits_ai_ranker == null ? undefined : Number(usage.credits_ai_ranker) || 0,
+        credits_ai_lead_distribution:
+          usage.credits_ai_lead_distribution == null
+            ? undefined
+            : Number(usage.credits_ai_lead_distribution) || 0,
+        credits_ai_lead_assist:
+          usage.credits_ai_lead_assist == null ? undefined : Number(usage.credits_ai_lead_assist) || 0,
+        credits_ai_custom_dashboard:
+          usage.credits_ai_custom_dashboard == null
+            ? undefined
+            : Number(usage.credits_ai_custom_dashboard) || 0,
+        credits_ai_ads_copilot:
+          usage.credits_ai_ads_copilot == null ? undefined : Number(usage.credits_ai_ads_copilot) || 0,
       },
       extra_operator_seats: Number(data.extra_operator_seats) || 0,
       operator_seat_price_uzs: data.operator_seat_price_uzs == null ? null : Number(data.operator_seat_price_uzs) || null,
       balance_uzs: Number(data.balance_uzs) || 0,
       channels: Array.isArray(data.channels) ? (data.channels as string[]) : undefined,
       agentic_mode: typeof data.agentic_mode === "boolean" ? data.agentic_mode : undefined,
+      ai_feature_models:
+        data.ai_feature_models && typeof data.ai_feature_models === "object"
+          ? (data.ai_feature_models as BillingFeatures["ai_feature_models"])
+          : undefined,
       periodKey: typeof data.periodKey === "string" ? data.periodKey : undefined,
       trialEndsAt: (data.trialEndsAt as string | null) ?? null,
       subscriptionEndsAt: (data.subscriptionEndsAt as string | null) ?? null,

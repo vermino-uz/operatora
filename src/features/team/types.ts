@@ -130,8 +130,15 @@ export interface UpsertSmsGatewayInput {
 
 // ── Billing / operator seats (`/billing/me`, `/billing/operator-seat/*`) ───
 
+import type {
+  AiCreditLimitKey,
+  AiFeatureKey,
+  AiModelId,
+} from "@/features/ai-credits/catalog";
+
 export interface PlanLimits {
   calls_per_month: number | null;
+  /** @deprecated Prefer credits_ai_chat — kept for older backends. */
   ai_chat_messages: number | null;
   ai_dashboards: number | null;
   custom_dashboards: number | null;
@@ -139,6 +146,19 @@ export interface PlanLimits {
   max_operators: number | null;
   storage_mb: number | null;
   storage_retention_days: number | null;
+  /** Per-feature monthly credit budgets (null = unlimited). */
+  credits_ai_chat?: number | null;
+  credits_ai_transcript?: number | null;
+  credits_ai_conversation?: number | null;
+  credits_ai_agent_reply?: number | null;
+  credits_ai_agent_suggest?: number | null;
+  credits_ai_inbox_recap?: number | null;
+  credits_ai_agent_copilot?: number | null;
+  credits_ai_ranker?: number | null;
+  credits_ai_lead_distribution?: number | null;
+  credits_ai_lead_assist?: number | null;
+  credits_ai_custom_dashboard?: number | null;
+  credits_ai_ads_copilot?: number | null;
 }
 
 export interface BillingUsage {
@@ -157,7 +177,21 @@ export interface BillingUsage {
   ai_dashboards?: number;
   custom_dashboards?: number;
   image_generations?: number;
+  credits_ai_chat?: number;
+  credits_ai_transcript?: number;
+  credits_ai_conversation?: number;
+  credits_ai_agent_reply?: number;
+  credits_ai_agent_suggest?: number;
+  credits_ai_inbox_recap?: number;
+  credits_ai_agent_copilot?: number;
+  credits_ai_ranker?: number;
+  credits_ai_lead_distribution?: number;
+  credits_ai_lead_assist?: number;
+  credits_ai_custom_dashboard?: number;
+  credits_ai_ads_copilot?: number;
 }
+
+export type AiFeatureModels = Partial<Record<AiFeatureKey, AiModelId>>;
 
 export interface BillingFeatures {
   planSlug: "free" | "pro" | "max" | "corporate";
@@ -173,11 +207,15 @@ export interface BillingFeatures {
   balance_uzs: number;
   channels?: string[];
   agentic_mode?: boolean;
+  /** Fixed model per AI feature for this plan (no client picker). */
+  ai_feature_models?: AiFeatureModels;
   periodKey?: string;
   trialEndsAt: string | null;
   subscriptionEndsAt: string | null;
   graceEndsAt: string | null;
 }
+
+export type { AiCreditLimitKey, AiFeatureKey, AiModelId };
 
 export interface RentOperatorSeatResponse {
   ok: boolean;
