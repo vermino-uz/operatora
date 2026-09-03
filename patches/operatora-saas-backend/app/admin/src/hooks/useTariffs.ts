@@ -155,9 +155,10 @@ export const SEAT_LIMIT_LABELS: Partial<Record<keyof PlanLimits, string>> = {
 
 export function useTariffs() {
   return useQuery({
-    queryKey: ['admin', 'tariffs'],
+    // Matches live admin console: GET /admin/plans
+    queryKey: ['admin', 'plans'],
     queryFn: async () => {
-      const data = await adminFetch<TariffPlan[] | { plans: TariffPlan[] }>('/admin/tariffs');
+      const data = await adminFetch<TariffPlan[] | { plans: TariffPlan[] }>('/admin/plans');
       return Array.isArray(data) ? data : data.plans ?? [];
     },
   });
@@ -168,11 +169,12 @@ export function useUpdateTariff() {
   return useMutation({
     mutationFn: async (params: { slug: string } & UpdatePlanPayload) => {
       const { slug, ...body } = params;
-      return adminFetch<TariffPlan>(`/admin/tariffs/${encodeURIComponent(slug)}`, {
-        method: 'PUT',
+      // Live admin: PATCH /admin/plans/:slug with { limits, features }
+      return adminFetch<TariffPlan>(`/admin/plans/${encodeURIComponent(slug)}`, {
+        method: 'PATCH',
         body,
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'tariffs'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'plans'] }),
   });
 }

@@ -100,7 +100,8 @@ function normalizePlan(raw: Record<string, unknown>): TariffPlan {
 
 export const adminTariffsApi = {
   async list(): Promise<TariffPlan[]> {
-    const data = await apiFetch<unknown>("/admin/tariffs");
+    // Live Nest admin console uses GET /admin/plans (not /admin/tariffs).
+    const data = await apiFetch<unknown>("/admin/plans");
     const rows = Array.isArray(data)
       ? data
       : Array.isArray((data as { plans?: unknown }).plans)
@@ -115,9 +116,10 @@ export const adminTariffsApi = {
     slug: string,
     body: { limits?: Partial<AdminPlanLimits>; features?: Partial<AdminPlanFeatures> },
   ): Promise<TariffPlan> {
+    // Live Nest admin: PATCH /admin/plans/:slug with { limits, features } body.
     const data = await apiFetch<Record<string, unknown>>(
-      `/admin/tariffs/${encodeURIComponent(slug)}`,
-      { method: "PUT", body },
+      `/admin/plans/${encodeURIComponent(slug)}`,
+      { method: "PATCH", body },
     );
     return normalizePlan(data);
   },

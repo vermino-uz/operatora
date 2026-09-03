@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 
+import { ApiError } from "../src/types/api";
 import { CREDITS_PER_USD } from "../src/features/ai-credits/catalog";
 import {
   canStartAiCall,
@@ -11,6 +12,7 @@ import {
   creditsForTokens,
   remainingCredits,
 } from "../src/features/ai-credits/creditMath";
+import { aiCreditsErrorMessage } from "../src/features/ai-credits/errors";
 
 // Flash: 1M in + 1M out → 0.15 + 0.6 = 0.75 USD → 75_000 credits
 assert.equal(costUsdForTokens("gemini-flash", { inputTokens: 1_000_000, outputTokens: 1_000_000 }), 0.75);
@@ -33,5 +35,34 @@ assert.equal(canStartAiCall(100, 100), false);
 assert.equal(canStartAiCall(99, 100), true);
 assert.equal(remainingCredits(40, 100), 60);
 assert.equal(remainingCredits(10, null), null);
+
+// Overshoot semantics: used can exceed limit after a large call; next start is blocked.
+assert.equal(canStartAiCall(150, 100), false);
+assert.equal(remainingCredits(150, 100), 0);
+
+// Feature off (0) vs unlimited (null)
+assert.equal(canStartAiCall(0, 0), false);
+assert.equal(canStartAiCall(999_999, null), true);
+
+// Opus pricing sanity: 1k in + 1k out → (0.015 + 0.075) = 0.09 USD → 9_000 credits
+assert.equal(costUsdForTokens("claude-opus", { inputTokens: 1_000, outputTokens: 1_000 }), 0.09);
+assert.equal(creditsForTokens("claude-opus", { inputTokens: 1_000, outputTokens: 1_000 }), 9_000);
+
+// Nano tiny call still floors to 1
+assert.equal(creditsForTokens("openai-nano", { inputTokens: 10, outputTokens: 10 }), 1);
+
+const exhausted = new ApiError({
+  statusCode: 402,
+  code: "AI_CREDITS_EXHAUSTED",
+  message: "Monthly AI credits exhausted for ai_chat",
+});
+assert.match(aiCreditsErrorMessage(exhausted), /exhausted/i);
+
+const disabled = new ApiError({
+  statusCode: 403,
+  code: "AI_FEATURE_DISABLED",
+  message: "AI feature ai_agent_reply is not included in your plan",
+});
+assert.match(aiCreditsErrorMessage(disabled), /not included/i);
 
 console.log("ai-credits math OK");

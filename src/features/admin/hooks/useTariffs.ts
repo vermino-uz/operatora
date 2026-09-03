@@ -11,7 +11,7 @@ import {
 
 export function useTariffsQuery() {
   return useQuery({
-    queryKey: ["admin", "tariffs"],
+    queryKey: ["admin", "plans"],
     queryFn: () => adminTariffsApi.list(),
     staleTime: 30_000,
   });
@@ -20,14 +20,14 @@ export function useTariffsQuery() {
 export function useUpdateTariffMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ["admin", "tariffs", "update"],
+    mutationKey: ["admin", "plans", "update"],
     mutationFn: (params: {
       slug: string;
       limits?: Partial<AdminPlanLimits>;
       features?: Partial<AdminPlanFeatures>;
     }) => adminTariffsApi.update(params.slug, { limits: params.limits, features: params.features }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["admin", "tariffs"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "plans"] });
     },
   });
 }

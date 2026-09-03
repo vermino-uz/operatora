@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { aiCreditsErrorMessage } from "@/features/ai-credits/errors";
 import { apiFetch, performTokenRefresh } from "@/services/api/client";
 import { tokenStorage } from "@/services/api/token-storage";
 import { ApiError } from "@/types/api";
@@ -195,6 +196,26 @@ async function authorizedStreamRequest(
   return response;
 }
 
+async function streamHttpErrorMessage(response: Response): Promise<string> {
+  let message = `Request failed (${response.status}).`;
+  let code: string | undefined;
+  try {
+    const text = await response.text();
+    if (text) {
+      const body = JSON.parse(text) as { message?: string | string[]; code?: string };
+      if (Array.isArray(body.message)) message = body.message.join(" ");
+      else if (typeof body.message === "string" && body.message.trim()) message = body.message;
+      code = typeof body.code === "string" ? body.code : undefined;
+    }
+  } catch {
+    // keep default message
+  }
+  return aiCreditsErrorMessage(
+    new ApiError({ statusCode: response.status, message, code }),
+    message,
+  );
+}
+
 export interface SendChatMessageParams {
   query: string;
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -244,8 +265,7 @@ export async function streamChatMessage(
   }
 
   if (!response.ok) {
-    const error = new ApiError({ statusCode: response.status, message: `Request failed (${response.status}).` });
-    handlers.onTransportError(error.message);
+    handlers.onTransportError(await streamHttpErrorMessage(response));
     return;
   }
 
@@ -275,7 +295,7 @@ export async function streamRunEvents(
   }
 
   if (!response.ok) {
-    handlers.onTransportError(`Request failed (${response.status}).`);
+    handlers.onTransportError(await streamHttpErrorMessage(response));
     return;
   }
 

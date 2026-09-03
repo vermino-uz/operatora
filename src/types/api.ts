@@ -48,6 +48,19 @@ export class ApiError extends Error {
     return this.statusCode === 404;
   }
 
+  /** HTTP 402 — monthly AI credits exhausted for a feature. */
+  get isPaymentRequired(): boolean {
+    return this.statusCode === 402;
+  }
+
+  get isAiCreditsExhausted(): boolean {
+    return this.code === "AI_CREDITS_EXHAUSTED" || (this.isPaymentRequired && this.code !== "AI_FEATURE_DISABLED");
+  }
+
+  get isAiFeatureDisabled(): boolean {
+    return this.code === "AI_FEATURE_DISABLED";
+  }
+
   get isServerError(): boolean {
     return this.statusCode >= 500;
   }

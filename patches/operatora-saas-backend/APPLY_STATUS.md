@@ -10,19 +10,21 @@
 | Other candidate NestJS repos under `vermino-uz/*` | **404** |
 | Workspace repo | `/workspace` = `github.com/vermino-uz/operatora` (new UI only) |
 | Self-hosted Cursor worker | Connected: `mail.aapanel.com` / display `/www/wwwroot/buypin-sample` — NestJS trees live there historically |
+| Live admin API | Confirmed `GET /admin/plans` + `PATCH /admin/plans/:slug` (console bundle on test.operatora.ai) |
 
 ## What this kit contains (Phases 0–1 artifacts)
 
 Drop-ins ready to copy onto a NestJS checkout:
 
 - Migration `0175_ai_feature_credits_models.sql`
-- `ai-model-pricing.catalog.ts`, `ai-credits.service.ts`, `ai-credits.math.spec.ts`
-- Admin `Tariffs.tsx` + `useTariffs.ts` (credits matrix + single model select)
+- `ai-model-pricing.catalog.ts`, `ai-feature-config.service.ts`, `ai-credits.service.ts`, `ai-credits.math.spec.ts`
+- Admin `Tariffs.tsx` + `useTariffs.ts` (credits matrix + single model select; `/admin/plans`)
 
 Merge guides (cannot be applied without the Nest tree):
 
 - `plan-features.catalog.EXTENSION.ts`
 - `PLAN_LIMITS_CHANGES.md`
+- `BILLING_MODULE_CHANGES.md`
 - `BILLING_ME_CHANGES.md`
 - `WIRE_CALL_SITES.ts`
 
@@ -38,6 +40,6 @@ Merge guides (cannot be applied without the Nest tree):
 Re-run this work **on the self-hosted worker** (or any host with `/www/wwwroot/test.operatora.ai` or `dev.operatora`), then:
 
 1. Prefer `test.operatora.ai` / staging checkout if multiple exist.
-2. Copy drop-ins, apply merge guides, register `AiCreditsService`.
+2. Copy drop-ins, apply merge guides, register `AiCreditsService` + `AiFeatureConfigService`.
 3. Wire all 12 features from `WIRE_CALL_SITES.ts`.
 4. Commit on Nest branch with `[migrate]` and deploy test → beta → prod.

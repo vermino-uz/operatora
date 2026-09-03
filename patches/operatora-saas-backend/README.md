@@ -8,10 +8,14 @@ This Cloud Agent VM only has `vermino-uz/operatora` (new UI). Copy these files i
 |---|---|
 | `infra/postgres/migrations/0175_ai_feature_credits_models.sql` | `app/infra/postgres/migrations/` |
 | `app/backend/src/billing/ai-model-pricing.catalog.ts` | `app/backend/src/billing/` |
+| `app/backend/src/billing/ai-feature-config.service.ts` | `app/backend/src/billing/` |
 | `app/backend/src/billing/ai-credits.service.ts` | `app/backend/src/billing/` |
 | `app/backend/src/billing/ai-credits.math.spec.ts` | `app/backend/src/billing/` |
 | `app/admin/src/hooks/useTariffs.ts` | `app/admin/src/hooks/` (replace) |
 | `app/admin/src/pages/Tariffs.tsx` | `app/admin/src/pages/` (replace) |
+
+Admin tariff HTTP (confirmed from live `test.operatora.ai/console` bundle):
+`GET /admin/plans`, `PATCH /admin/plans/:slug` with `{ limits, features }`.
 
 ## Merge guides
 
@@ -19,6 +23,7 @@ This Cloud Agent VM only has `vermino-uz/operatora` (new UI). Copy these files i
 |---|---|
 | `app/backend/src/billing/plan-features.catalog.EXTENSION.ts` | Extend NumericLimitKey / PlanLimits / PlanFeatureSet |
 | `app/backend/src/billing/PLAN_LIMITS_CHANGES.md` | `incrementUsage(amount)`, getNumericLimit/getUsageCount |
+| `app/backend/src/billing/BILLING_MODULE_CHANGES.md` | Register AiCreditsService + AiFeatureConfigService |
 | `app/backend/src/billing/BILLING_ME_CHANGES.md` | Expose `limits/usage.credits_*` + `ai_feature_models` on GET /billing/me |
 | `WIRE_CALL_SITES.ts` | Per-feature file map + assert→LLM→consume pattern |
 | `APPLY_STATUS.md` | Host search results + what is still blocked |
@@ -26,8 +31,8 @@ This Cloud Agent VM only has `vermino-uz/operatora` (new UI). Copy these files i
 ## Integration checklist
 
 1. Copy drop-in files onto a NestJS checkout under `/www/wwwroot` (prefer test/staging).
-2. Apply catalog + PlanLimitsService merges; register `AiCreditsService` in `BillingModule`.
-3. Confirm admin tariff GET/PUT round-trip `limits.credits_*` + `features.ai_feature_models`.
+2. Apply catalog + PlanLimitsService merges; register services per `BILLING_MODULE_CHANGES.md`.
+3. Confirm admin `GET/PATCH /admin/plans` round-trip `limits.credits_*` + `features.ai_feature_models`.
 4. Wire call sites from `WIRE_CALL_SITES.ts` (Phases 2–3) by mirroring existing `AiUsageService` / `PlanLimitsService` patterns — do not invent call sites.
 5. Extend `GET /billing/me` per `BILLING_ME_CHANGES.md`.
 6. Commit message must include `[migrate]`; deploy test → beta → prod.
@@ -45,5 +50,6 @@ Gating: assert remaining before call; consume actual after; overshoot allowed fo
 
 - Shared catalog + credit math + verify script
 - Billing overview credit bars
-- `/admin/tariffs` matrix (new UI)
+- `/admin/tariffs` matrix (new UI) hitting `/admin/plans`
 - Model pickers hidden; Ads sends `feature: ai_ads_copilot`
+- Stream/API surfaces `AI_CREDITS_EXHAUSTED` / `AI_FEATURE_DISABLED` messages
