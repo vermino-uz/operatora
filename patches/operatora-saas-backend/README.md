@@ -1,51 +1,34 @@
 # Backend patch kit — Operatora-SaaS/operatora
 
-This cloud agent only has write access to `vermino-uz/operatora` (new UI).
-Copy these files into the NestJS monorepo and finish call-site wiring there.
+This Cloud Agent VM only has `vermino-uz/operatora` (new UI). Copy these files into the NestJS monorepo on a host that has `Operatora-SaaS/operatora` (or `/www/wwwroot/test.operatora.ai`), then finish wiring and deploy with `[migrate]`.
 
-## Files
+## Drop-in files
 
 | Patch path | Destination |
 |---|---|
 | `infra/postgres/migrations/0175_ai_feature_credits_models.sql` | `app/infra/postgres/migrations/` |
 | `app/backend/src/billing/ai-model-pricing.catalog.ts` | `app/backend/src/billing/` |
 | `app/backend/src/billing/ai-credits.service.ts` | `app/backend/src/billing/` |
+| `app/backend/src/billing/ai-credits.math.spec.ts` | `app/backend/src/billing/` |
+| `app/admin/src/hooks/useTariffs.ts` | `app/admin/src/hooks/` (replace) |
+| `app/admin/src/pages/Tariffs.tsx` | `app/admin/src/pages/` (replace) |
 
-## Manual integration steps (Operatora-SaaS)
+## Merge guides
 
-1. **Extend `plan-features.catalog.ts`**
-   - Add all `credits_*` keys to `NumericLimitKey` / `PlanLimits`.
-   - Add `ai_feature_models: Partial<Record<AiFeatureKey, AiModelId>>` to `PlanFeatureSet`.
-   - Deprecate `ai_chat_models` for gating (keep for rollback).
-
-2. **`PlanLimitsService`**
-   - Treat `credits_*` as billable features.
-   - Make `incrementUsage(workspaceId, feature, amount = 1)` support `amount > 1`.
-   - Expose `getNumericLimit` / `getUsageCount` used by `AiCreditsService`.
-   - Prefer credit keys over legacy `ai_chat_messages` / `ai_inbox_summaries` / `ai_lead_assist` when present.
-
-3. **Register `AiCreditsService`** in `BillingModule` providers/exports.
-
-4. **Admin tariffs API** — ensure `GET/PUT /admin/tariffs` (or existing tariff endpoints) accept/return `limits.credits_*` and `features.ai_feature_models`. New UI calls:
-   - `GET /admin/tariffs`
-   - `PUT /admin/tariffs/:slug`
-
-5. **Wire call sites** (assert → LLM with `getProviderModel` → `consumeCredits`):
-
-| Feature | Primary files |
+| Doc | Action |
 |---|---|
-| `ai_chat` / `ai_ads_copilot` | `ai-chat/ai-chat.service.ts` — honor body `feature` |
-| `ai_conversation` / `ai_lead_assist` | `ai-ext/handlers/ai-chat.service.ts` |
-| `ai_inbox_recap` / `ai_agent_suggest` | `telegram-agentic/inbox-recap.service.ts`, suggest-reply |
-| `ai_agent_reply` / `ai_agent_copilot` | `telegram-agentic.service.ts` / Instagram twin |
-| `ai_ranker` | `signals-worker/signal-extractor.service.ts` |
-| `ai_lead_distribution` | `ai-lead-distribution/*` |
-| `ai_custom_dashboard` | `custom-dashboards/dashboard-ai.service.ts` |
-| `ai_transcript` | `conversations-controllers/audio-upload/audio-processing.service.ts` |
+| `app/backend/src/billing/plan-features.catalog.EXTENSION.ts` | Extend NumericLimitKey / PlanLimits / PlanFeatureSet |
+| `app/backend/src/billing/PLAN_LIMITS_CHANGES.md` | `incrementUsage(amount)`, getNumericLimit/getUsageCount |
+| `WIRE_CALL_SITES.ts` | Per-feature file map + assert→LLM→consume pattern |
 
-6. **`GET /billing/me`** — include credit limits/usage + `ai_feature_models` (new UI already parses them).
+## Integration checklist
 
-7. Deploy with `[migrate]` so `0175` runs on test → beta → prod.
+1. Copy drop-in files.
+2. Apply catalog + PlanLimitsService merges; register `AiCreditsService` in `BillingModule`.
+3. Confirm admin tariff GET/PUT round-trip `limits.credits_*` + `features.ai_feature_models`.
+4. Wire call sites from `WIRE_CALL_SITES.ts` (Phases 2–3).
+5. Extend `GET /billing/me` with credit usage/limits + `ai_feature_models` (new UI already parses).
+6. Commit message must include `[migrate]`; deploy test → beta → prod.
 
 ## Credit math
 
@@ -54,4 +37,11 @@ credits = max(1, ceil(usdCost * 100_000))  when tokens > 0
 usdCost = inTok/1e6 * inputPer1M + outTok/1e6 * outputPer1M
 ```
 
-Gating: assert remaining before call; consume actual after; overshoot allowed for that call only.
+Gating: assert remaining before call; consume actual after; overshoot allowed for that call only; next call fails until period reset.
+
+## Already done in vermino-uz/operatora (this PR)
+
+- Shared catalog + credit math + verify script
+- Billing overview credit bars
+- `/admin/tariffs` matrix (new UI)
+- Model pickers hidden; Ads sends `feature: ai_ads_copilot`
