@@ -39,5 +39,15 @@ export function useLeadTagMutations(leadId: string) {
     onSuccess: invalidate,
   });
 
-  return { createTag, setTags };
+  // Catalog-wide delete — clears the tag's assignments on every lead, not
+  // just this one, so every open assigned-tags query needs invalidating.
+  const deleteTag = useMutation({
+    mutationFn: (tagId: string) => leadTagsApi.deleteTag(tagId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lead-tags-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["lead-tag-assignments"] });
+    },
+  });
+
+  return { createTag, setTags, deleteTag };
 }

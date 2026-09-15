@@ -33,5 +33,12 @@ export const ROUTES = {
    * redirect (never a popup, unlike Instagram), same outside-`(protected)`
    * reasoning as the callbacks above. */
   adsCallback: "/ads-callback",
+  /** `/operator-feedbacks` — a personal "my feedback" page (operator role
+   * only), deliberately not in `constants/sitemap.ts`/the sidebar, same as
+   * the old frontend (no nav link there either — see
+   * `features/operators/permissions.ts`). Still listed here so `proxy.ts`'s
+   * auto-derived protected-prefix list covers it, same reasoning as the
+   * OAuth callbacks above. */
+  operatorFeedbacks: "/operator-feedbacks",
   ...sitemapRoutes,
 } as const;

@@ -1,17 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, FieldError, Input, Label, TextField } from "@heroui/react";
+import { ArrowRight, Eye, EyeSlash, Lock, Person, Smartphone } from "@gravity-ui/icons";
 
+import { AuthField } from "@/features/auth/components/AuthField";
 import { signUpSchema, type SignUpFormValues } from "@/features/auth/schema";
 import { useRegisterMutation } from "@/features/auth/hooks/useRegisterMutation";
 import { useRequestOtpMutation } from "@/features/auth/hooks/useRequestOtpMutation";
 import { ApiError } from "@/types/api";
-import { ROUTES } from "@/constants/routes";
 
 function signUpErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -23,13 +22,18 @@ function signUpErrorMessage(error: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
+const submitClass =
+  "mt-1 flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[14px] bg-accent text-[15px] font-semibold text-accent-foreground transition-[filter] hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60";
+
 export function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const registerMutation = useRegisterMutation();
   const requestOtpMutation = useRequestOtpMutation();
   const [otpStep, setOtpStep] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     control,
@@ -62,7 +66,7 @@ export function SignUpForm() {
     }, 1000);
   };
 
-  const onSubmitDetails = handleSubmit(async (values) => {
+  const onSubmitDetails = handleSubmit(async () => {
     setSubmitError(null);
     try {
       await sendOtp();
@@ -86,19 +90,30 @@ export function SignUpForm() {
         password: values.password,
         fullName,
       });
-      router.replace("/dashboard");
+      // Hooks into the pricing/checkout flow's plan-selection query params
+      // (`/pricing`'s CTAs link here as `/signup?plan=pro&cycle=yearly`,
+      // mirroring the old app's `SignUp.tsx`): a paid plan continues to
+      // `/checkout`, otherwise lands on `/welcome?plan=free` — same
+      // completion step the old app's signup flow uses, rather than
+      // dropping straight into the dashboard with no onboarding step.
+      const plan = searchParams.get("plan");
+      const cycle = searchParams.get("cycle") === "monthly" ? "monthly" : "yearly";
+      if (plan === "pro" || plan === "max") {
+        router.replace(`/checkout?plan=${plan}&cycle=${cycle}`);
+      } else {
+        router.replace("/welcome?plan=free");
+      }
     } catch (err) {
       setSubmitError(signUpErrorMessage(err));
     }
   });
 
-  const busy =
-    isSubmitting || registerMutation.isPending || requestOtpMutation.isPending;
+  const busy = isSubmitting || registerMutation.isPending || requestOtpMutation.isPending;
 
   if (otpStep) {
     return (
-      <form className="flex flex-col gap-5" onSubmit={onSubmitOtp} noValidate>
-        <p className="text-sm text-foreground/60">
+      <form className="flex flex-col gap-4" onSubmit={onSubmitOtp} noValidate>
+        <p className="text-sm text-muted">
           We sent a verification code to{" "}
           <span className="font-medium text-foreground">{getValues("phone").trim()}</span>.
         </p>
@@ -107,17 +122,22 @@ export function SignUpForm() {
           name="otpCode"
           control={control}
           render={({ field, fieldState }) => (
-            <TextField {...field} isInvalid={fieldState.invalid} isRequired autoComplete="one-time-code">
-              <Label className="text-sm font-medium text-foreground/80">Verification code</Label>
-              <Input
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="123456"
-                variant="secondary"
-                className="tracking-[0.35em]"
-              />
-              <FieldError>{fieldState.error?.message}</FieldError>
-            </TextField>
+            <AuthField
+              id="signup-otp"
+              label="Verification code"
+              icon={<Lock className="size-[18px]" strokeWidth={1.8} />}
+              error={fieldState.error?.message}
+              inputProps={{
+                ...field,
+                inputMode: "numeric",
+                maxLength: 6,
+                autoComplete: "one-time-code",
+                required: true,
+                placeholder: "123456",
+                disabled: busy,
+                className: "tracking-[0.35em]",
+              }}
+            />
           )}
         />
 
@@ -127,14 +147,15 @@ export function SignUpForm() {
           </p>
         ) : null}
 
-        <Button type="submit" variant="primary" size="lg" isDisabled={busy} fullWidth>
+        <button type="submit" disabled={busy} className={submitClass}>
           {busy ? "Creating account…" : "Verify & create account"}
-        </Button>
+          {busy ? null : <ArrowRight className="size-4" strokeWidth={2} />}
+        </button>
 
         <div className="flex items-center justify-between text-sm">
           <button
             type="button"
-            className="text-foreground/60 hover:text-foreground"
+            className="text-muted hover:text-foreground"
             onClick={() => setOtpStep(false)}
             disabled={busy}
           >
@@ -154,28 +175,44 @@ export function SignUpForm() {
   }
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={onSubmitDetails} noValidate>
+    <form className="flex flex-col gap-4" onSubmit={onSubmitDetails} noValidate>
       <div className="grid grid-cols-2 gap-3">
         <Controller
           name="firstName"
           control={control}
           render={({ field, fieldState }) => (
-            <TextField {...field} isInvalid={fieldState.invalid} isRequired autoComplete="given-name">
-              <Label className="text-sm font-medium text-foreground/80">First name</Label>
-              <Input placeholder="Aziz" variant="secondary" />
-              <FieldError>{fieldState.error?.message}</FieldError>
-            </TextField>
+            <AuthField
+              id="signup-first-name"
+              label="First name"
+              icon={<Person className="size-[18px]" strokeWidth={1.8} />}
+              error={fieldState.error?.message}
+              inputProps={{
+                ...field,
+                autoComplete: "given-name",
+                required: true,
+                placeholder: "Aziz",
+                disabled: busy,
+              }}
+            />
           )}
         />
         <Controller
           name="lastName"
           control={control}
           render={({ field, fieldState }) => (
-            <TextField {...field} isInvalid={fieldState.invalid} isRequired autoComplete="family-name">
-              <Label className="text-sm font-medium text-foreground/80">Last name</Label>
-              <Input placeholder="Karimov" variant="secondary" />
-              <FieldError>{fieldState.error?.message}</FieldError>
-            </TextField>
+            <AuthField
+              id="signup-last-name"
+              label="Last name"
+              icon={<Person className="size-[18px]" strokeWidth={1.8} />}
+              error={fieldState.error?.message}
+              inputProps={{
+                ...field,
+                autoComplete: "family-name",
+                required: true,
+                placeholder: "Karimov",
+                disabled: busy,
+              }}
+            />
           )}
         />
       </div>
@@ -184,11 +221,20 @@ export function SignUpForm() {
         name="phone"
         control={control}
         render={({ field, fieldState }) => (
-          <TextField {...field} isInvalid={fieldState.invalid} isRequired autoComplete="tel">
-            <Label className="text-sm font-medium text-foreground/80">Phone</Label>
-            <Input type="tel" placeholder="+998 90 123 45 67" variant="secondary" />
-            <FieldError>{fieldState.error?.message}</FieldError>
-          </TextField>
+          <AuthField
+            id="signup-phone"
+            label="Phone"
+            icon={<Smartphone className="size-[18px]" strokeWidth={1.8} />}
+            error={fieldState.error?.message}
+            inputProps={{
+              ...field,
+              type: "tel",
+              autoComplete: "tel",
+              required: true,
+              placeholder: "+998 90 123 45 67",
+              disabled: busy,
+            }}
+          />
         )}
       />
 
@@ -196,17 +242,34 @@ export function SignUpForm() {
         name="password"
         control={control}
         render={({ field, fieldState }) => (
-          <TextField
-            {...field}
-            type="password"
-            isInvalid={fieldState.invalid}
-            isRequired
-            autoComplete="new-password"
-          >
-            <Label className="text-sm font-medium text-foreground/80">Password</Label>
-            <Input placeholder="At least 8 characters" variant="secondary" />
-            <FieldError>{fieldState.error?.message}</FieldError>
-          </TextField>
+          <AuthField
+            id="signup-password"
+            label="Password"
+            icon={<Lock className="size-[18px]" strokeWidth={1.8} />}
+            error={fieldState.error?.message}
+            trailing={
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="shrink-0 text-muted transition-colors hover:text-foreground"
+              >
+                {showPassword ? (
+                  <EyeSlash className="size-[18px]" strokeWidth={1.8} />
+                ) : (
+                  <Eye className="size-[18px]" strokeWidth={1.8} />
+                )}
+              </button>
+            }
+            inputProps={{
+              ...field,
+              type: showPassword ? "text" : "password",
+              autoComplete: "new-password",
+              required: true,
+              placeholder: "At least 8 characters",
+              disabled: busy,
+            }}
+          />
         )}
       />
 
@@ -216,16 +279,10 @@ export function SignUpForm() {
         </p>
       ) : null}
 
-      <Button type="submit" variant="primary" size="lg" isDisabled={busy} fullWidth>
+      <button type="submit" disabled={busy} className={submitClass}>
         {busy ? "Sending code…" : "Continue"}
-      </Button>
-
-      <p className="text-center text-sm text-foreground/60">
-        Already have an account?{" "}
-        <Link href={ROUTES.login} className="font-medium text-accent hover:underline">
-          Sign in
-        </Link>
-      </p>
+        {busy ? null : <ArrowRight className="size-4" strokeWidth={2} />}
+      </button>
     </form>
   );
 }

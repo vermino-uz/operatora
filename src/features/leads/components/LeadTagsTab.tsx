@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { Button, Input, TextField, Label } from "@heroui/react";
+import { TrashBin } from "@gravity-ui/icons";
 
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { IconButton } from "@/components/ui/IconButton";
 import { useLeadAssignedTagsQuery, useLeadTagCatalogQuery, useLeadTagMutations } from "@/features/leads/hooks/useLeadTags";
 import { leadNewTagSchema } from "@/features/leads/schema";
 import { leadActionErrorMessage } from "@/features/leads/leadActionError";
@@ -15,11 +17,13 @@ import { leadActionErrorMessage } from "@/features/leads/leadActionError";
  * name and press "Create" for one that doesn't exist yet (get-or-create,
  * case-insensitive dedupe server-side). A single search/create input, not a
  * react-hook-form form — there's no multi-field validation here, just a
- * live filter plus one create action gated by `leadNewTagSchema`. */
+ * live filter plus one create action gated by `leadNewTagSchema`. The
+ * catalog chip's trash icon deletes the tag workspace-wide (all leads, not
+ * just this one) — a separate, confirmed action from the toggle click. */
 export function LeadTagsTab({ leadId, isActive }: { leadId: string; isActive: boolean }) {
   const catalogQuery = useLeadTagCatalogQuery(isActive);
   const assignedQuery = useLeadAssignedTagsQuery(leadId, isActive);
-  const { createTag, setTags } = useLeadTagMutations(leadId);
+  const { createTag, setTags, deleteTag } = useLeadTagMutations(leadId);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -36,6 +40,17 @@ export function LeadTagsTab({ leadId, isActive }: { leadId: string; isActive: bo
     const next = assignedIds.has(tagId) ? [...assignedIds].filter((id) => id !== tagId) : [...assignedIds, tagId];
     try {
       await setTags.mutateAsync(next);
+    } catch (err) {
+      setError(leadActionErrorMessage(err));
+    }
+  }
+
+  async function handleDeleteTag(tagId: string, tagName: string) {
+    if (deleteTag.isPending) return;
+    if (!window.confirm(`Delete the "${tagName}" tag? It will be removed from every lead. This can't be undone.`)) return;
+    setError(null);
+    try {
+      await deleteTag.mutateAsync(tagId);
     } catch (err) {
       setError(leadActionErrorMessage(err));
     }
@@ -106,18 +121,33 @@ export function LeadTagsTab({ leadId, isActive }: { leadId: string; isActive: bo
         <p className="mb-1 text-xs text-foreground/50">Workspace tag catalog</p>
         <div className="flex flex-wrap gap-2">
           {filtered.map((tag) => (
-            <button
+            <span
               key={tag.id}
-              type="button"
-              onClick={() => toggleTag(tag.id)}
-              disabled={setTags.isPending}
-              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
+              className={`flex items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 text-xs ${
                 assignedIds.has(tag.id) ? "border-primary bg-primary/10" : "border-border"
               }`}
             >
-              <span className="size-2 rounded-full" style={{ backgroundColor: tag.color }} />
-              {tag.name}
-            </button>
+              <button
+                type="button"
+                onClick={() => toggleTag(tag.id)}
+                disabled={setTags.isPending}
+                className="flex items-center gap-1.5 py-0.5"
+              >
+                <span className="size-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                {tag.name}
+              </button>
+              <IconButton
+                label={`Delete "${tag.name}" tag`}
+                tooltip="Delete tag from workspace"
+                size="sm"
+                variant="ghost"
+                isDisabled={deleteTag.isPending}
+                onPress={() => handleDeleteTag(tag.id, tag.name)}
+                className="!size-5 !min-w-0"
+              >
+                <TrashBin className="size-3" aria-hidden="true" />
+              </IconButton>
+            </span>
           ))}
           {filtered.length === 0 ? <span className="text-sm text-foreground/50">No matching tags</span> : null}
         </div>

@@ -94,4 +94,18 @@ export const leadTagsApi = {
       });
     }
   },
+
+  /** Remove a tag from the workspace catalog entirely — no FK cascade to
+   * rely on via `dbProxyQuery`, so assignments across every lead are deleted
+   * first, then the catalog row itself. */
+  async deleteTag(tagId: string): Promise<void> {
+    await dbProxyQuery(ASSIGNMENTS_TABLE, {
+      method: "delete",
+      filters: [{ column: "tag_id", op: "eq", value: tagId }],
+    });
+    await dbProxyQuery(TAGS_TABLE, {
+      method: "delete",
+      filters: [{ column: "id", op: "eq", value: tagId }],
+    });
+  },
 };

@@ -8,6 +8,7 @@ import { useSessionStore } from "@/state/session-store";
 import { isAdmin } from "@/auth/permissions";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { AppShell } from "@/components/layout/AppShell";
+import { AdminNav } from "@/features/admin/components/AdminNav";
 
 /**
  * Admin console — same auth guard as (protected), plus a global-role check
@@ -31,5 +32,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return <LoadingState label="Checking access…" className="min-h-screen" />;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <div className="mx-auto max-w-[1400px]">
+        <AdminNav />
+        {children}
+      </div>
+    </AppShell>
+  );
 }

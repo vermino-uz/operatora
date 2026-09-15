@@ -136,8 +136,10 @@ export default function AiDashboardsPage() {
         {generateMutation.isError ? (
           <div className="mx-auto max-w-[860px] px-6">
             <p role="alert" className="text-center text-sm text-danger">
-              {generateMutation.error instanceof ApiError && generateMutation.error.code === "plan_limit"
-                ? generateMutation.error.message
+              {generateMutation.error instanceof ApiError
+                ? generateMutation.error.code === "plan_limit"
+                  ? generateMutation.error.message
+                  : generateMutation.error.message || "Couldn't generate the dashboard. Please try again."
                 : "Couldn't generate the dashboard. Please try again."}
             </p>
           </div>

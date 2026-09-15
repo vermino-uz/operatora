@@ -3,23 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge, ListBox, Select } from "@heroui/react";
-import {
-  ArrowDownToSquare,
-  ArrowRotateRight,
-  ArrowUpFromSquare,
-  CircleLink,
-  CodeMerge,
-  BarsDescendingAlignLeftArrowDown,
-  Envelope,
-  Eye,
-  Funnel,
-  GearPlay,
-  LayoutColumns,
-  ListCheck,
-  MagicWand,
-  Plus,
-  Thunderbolt,
-} from "@gravity-ui/icons";
+import { ArrowRotateRight, CircleLink, Funnel, Plus } from "@gravity-ui/icons";
 
 import { useSessionStore } from "@/state/session-store";
 import { hasAnyRole, MANAGER_ROLES } from "@/auth/permissions";
@@ -35,8 +19,10 @@ import { KanbanBoard } from "@/features/leads/components/KanbanBoard";
 import { CreateLeadDialog } from "@/features/leads/components/CreateLeadDialog";
 import { LeadDetailsModal } from "@/features/leads/components/LeadDetailsModal";
 import { LeadFiltersBar } from "@/features/leads/components/LeadFiltersBar";
+import { LeadsHeaderSearch } from "@/features/leads/components/LeadsHeaderSearch";
 import { LeadsTabs } from "@/features/leads/components/LeadsTabs";
 import { LeadViewToggle } from "@/features/leads/components/LeadViewToggle";
+import { LeadsBoardMenus } from "@/features/leads/components/LeadsBoardMenus";
 import { LeadsListTable } from "@/features/leads/components/LeadsListTable";
 import { SoldLeadsTable } from "@/features/leads/components/SoldLeadsTable";
 import { RejectedLeadsTable } from "@/features/leads/components/RejectedLeadsTable";
@@ -48,7 +34,6 @@ import { DuplicateLeadsDialog } from "@/features/leads/components/DuplicateLeads
 import { ManageColumnsDialog } from "@/features/leads/components/ManageColumnsDialog";
 import { ManageCustomFieldsDialog } from "@/features/leads/components/ManageCustomFieldsDialog";
 import { LeadFieldVisibilityManager } from "@/features/leads/components/LeadFieldVisibilityManager";
-import { CreateBoardDialog } from "@/features/leads/components/CreateBoardDialog";
 import { ShareBoardDialog } from "@/features/leads/components/ShareBoardDialog";
 import { SmsTemplatesManager } from "@/features/leads/components/SmsTemplatesManager";
 import { BulkComposeSmsDialog } from "@/features/leads/components/BulkComposeSmsDialog";
@@ -66,10 +51,8 @@ import { countActiveLeadFilters, EMPTY_LEAD_FILTERS, type LeadRow, type LeadTab,
  * operations, no sold/rejected/archived/trash views — board + columns,
  * drag-and-drop move, realtime, filtering, and a scoped-down details view.
  *
- * Board switcher: only rendered when the workspace actually has more than
- * one board (most workspaces have exactly one, seeded on signup) — decided
- * from `GET /boards`'s own list rather than over-building a switcher UI no
- * workspace in practice needs.
+ * Board switcher: only rendered when the workspace already has 2 or more
+ * boards. Creating a board from this page is not offered.
  */
 export default function LeadsPage() {
   const workspaceId = useSessionStore((s) => s.workspaceId);
@@ -91,7 +74,6 @@ export default function LeadsPage() {
   const [manageColumnsOpen, setManageColumnsOpen] = useState(false);
   const [manageFieldsOpen, setManageFieldsOpen] = useState(false);
   const [fieldVisibilityOpen, setFieldVisibilityOpen] = useState(false);
-  const [createBoardOpen, setCreateBoardOpen] = useState(false);
   const [shareBoardOpen, setShareBoardOpen] = useState(false);
   const [smsTemplatesOpen, setSmsTemplatesOpen] = useState(false);
   const [composeBulkSmsOpen, setComposeBulkSmsOpen] = useState(false);
@@ -143,8 +125,16 @@ export default function LeadsPage() {
   }
 
   const boardDataQuery = useLeadBoardQuery(boardId, filters);
+  // Sold/Rejected marker columns (`special_stage_kind`) stay off the drag-and-drop
+  // Kanban board even when not explicitly `is_hidden`, but every other surface that
+  // consumes board columns (drawer, bulk actions, export, list view) should still
+  // offer them — they're valid targets, just not something you drag a card into.
+  const kanbanColumns = useMemo(
+    () => (boardDataQuery.data?.columns ?? []).filter((c) => !c.is_hidden && !c.special_stage_kind),
+    [boardDataQuery.data],
+  );
   const visibleColumns = useMemo(
-    () => (boardDataQuery.data?.columns ?? []).filter((c) => !c.is_hidden),
+    () => (boardDataQuery.data?.columns ?? []).filter((c) => !c.is_hidden || c.special_stage_kind),
     [boardDataQuery.data],
   );
   const listColumnIds = useMemo(() => visibleColumns.map((c) => c.id), [visibleColumns]);
@@ -192,52 +182,67 @@ export default function LeadsPage() {
   return (
     <div className="-m-3 flex h-[calc(100%+1.5rem)] min-h-0 flex-col overflow-hidden md:-m-6 md:h-[calc(100%+3rem)]">
       <div className="flex flex-col gap-2 border-b border-black/[0.08] px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3 dark:border-white/[0.12]">
-        <h1 className="text-lg font-semibold text-foreground">Leads</h1>
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+          <h1 className="shrink-0 text-lg font-semibold text-foreground">Leads</h1>
+          <LeadsTabs value={activeTab} onChange={setActiveTab} />
+          {filtersSupported ? (
+            <LeadsHeaderSearch
+              value={filters.search}
+              onChange={(search) => setFilters((prev) => ({ ...prev, search }))}
+            />
+          ) : null}
+        </div>
 
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5">
-          <Select
-            aria-label="Board"
-            value={boardId}
-            onChange={(key) => {
-              if (typeof key === "string") setSelectedBoardId(key);
-            }}
-            className="w-[min(100%,9rem)] shrink-0 sm:w-56"
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox items={boards.map((b) => ({ id: b.id, label: b.name }))}>
-                {(opt) => (
-                  <ListBox.Item id={opt.id} textValue={opt.label}>
-                    {opt.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                )}
-              </ListBox>
-            </Select.Popover>
-          </Select>
+          {boards.length >= 2 ? (
+            <Select
+              aria-label="Board"
+              value={boardId}
+              onChange={(key) => {
+                if (typeof key === "string") setSelectedBoardId(key);
+              }}
+              className="w-[min(100%,9rem)] shrink-0 sm:w-56"
+            >
+              <Select.Trigger className="h-9 min-h-9 items-center py-0">
+                <Select.Value className="truncate text-sm leading-none" />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox items={boards.map((b) => ({ id: b.id, label: b.name }))}>
+                  {(opt) => (
+                    <ListBox.Item id={opt.id} textValue={opt.label}>
+                      {opt.label}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  )}
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          ) : null}
 
-          <IconButton
-            label="New board"
-            tooltip="New board"
-            variant="ghost"
-            size="sm"
-            onPress={() => setCreateBoardOpen(true)}
-          >
-            <Plus className="size-4" aria-hidden="true" />
-          </IconButton>
-
-          <IconButton
-            label="Share board"
-            tooltip="Share board"
-            variant="ghost"
-            size="sm"
-            onPress={() => setShareBoardOpen(true)}
-          >
+          <IconButton label="Share board" tooltip="Share board" variant="ghost" size="sm" onPress={() => setShareBoardOpen(true)}>
             <CircleLink className="size-4" aria-hidden="true" />
           </IconButton>
+
+          <LeadsBoardMenus
+            showLeadTools={activeTab === "active"}
+            viewMode={viewMode}
+            sortByAiScore={sortByAiScore}
+            canDistributeLeads={canDistributeLeads}
+            canBulkSms={canBulkSms}
+            onManageColumns={() => setManageColumnsOpen(true)}
+            onManageFields={() => setManageFieldsOpen(true)}
+            onFieldVisibility={() => setFieldVisibilityOpen(true)}
+            onAutomations={() => setAutomationsOpen(true)}
+            onToggleSortByAiScore={() => setSortByAiScore((v) => !v)}
+            onAiDistribution={() => setAiDistributionOpen(true)}
+            onBulkActions={() => setBulkActionsOpen(true)}
+            onDuplicates={() => setDuplicateLeadsOpen(true)}
+            onSmsTemplates={() => setSmsTemplatesOpen(true)}
+            onImport={() => setImportOpen(true)}
+            onExport={() => setExportOpen(true)}
+            onComposeSms={() => setComposeBulkSmsOpen(true)}
+          />
 
           <IconButton
             label="Refresh board"
@@ -272,133 +277,6 @@ export default function LeadsPage() {
           {activeTab === "active" ? (
             <>
               <LeadViewToggle value={viewMode} onChange={setViewMode} />
-
-              <IconButton
-                label="Manage columns"
-                tooltip="Manage columns"
-                variant="ghost"
-                size="sm"
-                onPress={() => setManageColumnsOpen(true)}
-              >
-                <LayoutColumns className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="Manage custom fields"
-                tooltip="Manage custom fields"
-                variant="ghost"
-                size="sm"
-                onPress={() => setManageFieldsOpen(true)}
-              >
-                <ListCheck className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="Field visibility"
-                tooltip="Field visibility"
-                variant="ghost"
-                size="sm"
-                onPress={() => setFieldVisibilityOpen(true)}
-              >
-                <Eye className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="Board automations"
-                tooltip="Automations"
-                variant="ghost"
-                size="sm"
-                onPress={() => setAutomationsOpen(true)}
-              >
-                <GearPlay className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              {viewMode === "board" ? (
-                <IconButton
-                  label="Sort by AI score"
-                  tooltip={sortByAiScore ? "Sorting by AI score (this page only)" : "Sort by AI score"}
-                  variant={sortByAiScore ? "secondary" : "ghost"}
-                  size="sm"
-                  onPress={() => setSortByAiScore((v) => !v)}
-                >
-                  <BarsDescendingAlignLeftArrowDown className="size-4" aria-hidden="true" />
-                </IconButton>
-              ) : null}
-
-              {canDistributeLeads ? (
-                <IconButton
-                  label="AI lead distribution"
-                  tooltip="AI lead distribution"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => setAiDistributionOpen(true)}
-                >
-                  <MagicWand className="size-4 text-primary" aria-hidden="true" />
-                </IconButton>
-              ) : null}
-
-              <IconButton
-                label="Bulk actions on filtered leads"
-                tooltip="Bulk actions (filtered)"
-                variant="ghost"
-                size="sm"
-                onPress={() => setBulkActionsOpen(true)}
-              >
-                <Thunderbolt className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="Find duplicate leads"
-                tooltip="Duplicate leads"
-                variant="ghost"
-                size="sm"
-                onPress={() => setDuplicateLeadsOpen(true)}
-              >
-                <CodeMerge className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="SMS templates"
-                tooltip="SMS templates"
-                variant="ghost"
-                size="sm"
-                onPress={() => setSmsTemplatesOpen(true)}
-              >
-                <Envelope className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="Import leads"
-                tooltip="Import (CSV/Excel)"
-                variant="ghost"
-                size="sm"
-                onPress={() => setImportOpen(true)}
-              >
-                <ArrowUpFromSquare className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              <IconButton
-                label="Export leads"
-                tooltip="Export (CSV)"
-                variant="ghost"
-                size="sm"
-                onPress={() => setExportOpen(true)}
-              >
-                <ArrowDownToSquare className="size-4" aria-hidden="true" />
-              </IconButton>
-
-              {canBulkSms ? (
-                <IconButton
-                  label="Compose SMS"
-                  tooltip="Compose SMS (bulk)"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => setComposeBulkSmsOpen(true)}
-                >
-                  <Envelope className="size-4 text-primary" aria-hidden="true" />
-                </IconButton>
-              ) : null}
-
               <IconButton label="Add lead" tooltip="Add lead" variant="secondary" size="sm" onPress={() => setCreateLeadOpen(true)}>
                 <Plus className="size-4" aria-hidden="true" />
               </IconButton>
@@ -406,8 +284,6 @@ export default function LeadsPage() {
           ) : null}
         </div>
       </div>
-
-      <LeadsTabs value={activeTab} onChange={setActiveTab} />
 
       {filtersOpen && filtersSupported ? (
         <LeadFiltersBar filters={filters} onChange={setFilters} operators={operatorOptions} />
@@ -432,12 +308,12 @@ export default function LeadsPage() {
             <LoadingState label="Loading board…" />
           ) : boardDataQuery.isError ? (
             <ErrorState error={boardDataQuery.error} onRetry={() => boardDataQuery.refetch()} />
-          ) : visibleColumns.length === 0 ? (
+          ) : kanbanColumns.length === 0 ? (
             <EmptyState title="No columns yet" description="This board has no pipeline columns configured." />
           ) : (
             <KanbanBoard
               boardId={boardId}
-              columns={visibleColumns}
+              columns={kanbanColumns}
               counts={boardDataQuery.data?.counts ?? {}}
               filters={filters}
               onOpenLead={setOpenLead}
@@ -482,17 +358,6 @@ export default function LeadsPage() {
       {manageFieldsOpen ? <ManageCustomFieldsDialog boardId={boardId} onClose={() => setManageFieldsOpen(false)} /> : null}
 
       {fieldVisibilityOpen ? <LeadFieldVisibilityManager onClose={() => setFieldVisibilityOpen(false)} /> : null}
-
-      {createBoardOpen ? (
-        <CreateBoardDialog
-          workspaceId={workspaceId}
-          onClose={() => setCreateBoardOpen(false)}
-          onCreated={(newBoardId) => {
-            setSelectedBoardId(newBoardId);
-            setCreateBoardOpen(false);
-          }}
-        />
-      ) : null}
 
       {shareBoardOpen ? <ShareBoardDialog boardId={boardId} onClose={() => setShareBoardOpen(false)} /> : null}
 

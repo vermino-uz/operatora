@@ -10,6 +10,18 @@ import type {
   ConversationListParams,
 } from "@/features/conversations/types";
 
+/** UI status-filter values vs. the DB's actual `conversations_status_check`
+ * values (`queued | processing | completed | failed | needs_review |
+ * in_progress` — the backend's `audio-processing.service.ts` documents
+ * `'analyzed'` is rejected by that constraint and always writes
+ * `'completed'`; new rows are inserted as `'queued'`, never `'new'`).
+ * Without this mapping, the "Analyzed"/"New" toolbar tabs send a status
+ * value no row ever has and always render empty. */
+const STATUS_FILTER_TO_DB: Partial<Record<NonNullable<ConversationListParams["status"]>, string>> = {
+  analyzed: "completed",
+  new: "queued",
+};
+
 /** `GET /api/conversation` is a confirmed exception to "the backend always
  * derives workspace from the JWT alone" (same pattern the AI Chat feature
  * established in `services/api/chat.ts`) — omitting `workspace_id` unions
@@ -19,7 +31,7 @@ function buildListPath(workspaceId: string, params: ConversationListParams): str
   q.set("offset", String(params.offset));
   q.set("limit", String(params.limit));
   if (params.search) q.set("search", params.search);
-  if (params.status && params.status !== "all") q.set("status", params.status);
+  if (params.status && params.status !== "all") q.set("status", STATUS_FILTER_TO_DB[params.status] ?? params.status);
   if (params.operator && params.operator !== "all") q.set("operator", params.operator);
   if (params.fromDate) q.set("from_date", params.fromDate);
   if (params.toDate) q.set("to_date", params.toDate);

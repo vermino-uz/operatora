@@ -2,6 +2,15 @@
 
 import { useState } from "react";
 import { Drawer, ListBox, Select } from "@heroui/react";
+import {
+  ChartColumn,
+  CircleInfo,
+  Comment,
+  Envelope,
+  Handset,
+  ListCheck,
+  ListTimeline,
+} from "@gravity-ui/icons";
 
 import { useSessionStore } from "@/state/session-store";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -21,27 +30,31 @@ import { LeadConversationsTab } from "@/features/leads/components/LeadConversati
 import { LeadSmsTab } from "@/features/leads/components/LeadSmsTab";
 import { LeadTasksTab } from "@/features/leads/components/LeadTasksTab";
 import { LeadStatsTab } from "@/features/leads/components/LeadStatsTab";
-import { LeadAiAssistTab } from "@/features/leads/components/LeadAiAssistTab";
+import { LeadChannelChatDialog } from "@/features/leads/components/LeadChannelChatDialog";
+import type { LeadChatChannel } from "@/features/leads/hooks/useLeadChannelChat";
 
-type DetailsTab = "info" | "comments" | "timeline" | "tags" | "conversations" | "sms" | "tasks" | "stats" | "ai";
+type DetailsTab = "info" | "comments" | "timeline" | "conversations" | "sms" | "tasks" | "stats";
+
+const DEFAULT_COLUMN_COLOR = "#3b82f6";
+const POPUP_CHANNELS = new Set<string>(["telegram", "instagram"]);
 
 const DETAIL_TABS = [
-  ["info", "Info"],
-  ["comments", "Comments"],
-  ["timeline", "Timeline"],
-  ["tags", "Tags"],
-  ["conversations", "Conversations"],
-  ["sms", "SMS"],
-  ["tasks", "Tasks"],
-  ["stats", "Stats"],
-  ["ai", "AI Assist"],
-] as const satisfies ReadonlyArray<[DetailsTab, string]>;
+  ["info", "Info", CircleInfo],
+  ["comments", "Comments", Comment],
+  ["timeline", "Timeline", ListTimeline],
+  ["conversations", "Conversations", Handset],
+  ["sms", "SMS", Envelope],
+  ["tasks", "Tasks", ListCheck],
+  ["stats", "Stats", ChartColumn],
+] as const satisfies ReadonlyArray<[DetailsTab, string, typeof CircleInfo]>;
 
 /**
  * Real (not stub) lead details view — HeroUI `Drawer` sliding in from the
  * right edge, now a tabbed panel (Phase 2c-4): Info (core fields, unchanged
- * from the Phase 2b MVP, plus additional phone numbers) + Comments/
- * Timeline/Tags/Conversations/SMS/Tasks/Stats, each its own component under
+ * from the Phase 2b MVP, plus additional phone numbers and tags — tags
+ * folded in here rather than a separate tab, since `LeadTagsTab` is a thin
+ * chip picker, not worth its own slot) + Comments/Timeline/Conversations/
+ * SMS/Tasks/Stats, each its own component under
  * `features/leads/components/Lead*Tab.tsx`. Every non-Info tab is mounted
  * (and its data hook enabled) only while it's the selected tab — see the
  * `isActive` prop threaded into each — so opening the drawer never fires
@@ -71,6 +84,7 @@ export function LeadDetailsModal({
   const assignOperator = useAssignOperatorMutation(boardId);
   const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<DetailsTab>("info");
+  const [openChannelChat, setOpenChannelChat] = useState<LeadChatChannel | null>(null);
 
   // Seed from the card's already-cached row so the modal never opens
   // blank; the fresh `GET /leads/:id` read replaces it once it resolves.
@@ -90,6 +104,7 @@ export function LeadDetailsModal({
   };
 
   return (
+    <>
     <Drawer.Backdrop isOpen onOpenChange={(open) => !open && onClose()}>
       <Drawer.Content placement="right">
         <Drawer.Dialog className="flex h-full max-h-[100dvh] !w-full max-w-2xl flex-col">
@@ -101,9 +116,22 @@ export function LeadDetailsModal({
                 <span className="flex items-center gap-1">
                   {channels.map((channel) => {
                     const Icon = CHANNEL_ICONS[channel];
-                    return Icon ? (
-                      <Icon key={channel} className="size-3.5 text-foreground/40" aria-label={channel} />
-                    ) : null;
+                    if (!Icon) return null;
+                    if (!POPUP_CHANNELS.has(channel)) {
+                      return <Icon key={channel} className="size-3.5 text-foreground/40" aria-label={channel} />;
+                    }
+                    return (
+                      <button
+                        key={channel}
+                        type="button"
+                        aria-label={`Open ${channel} chat`}
+                        title={`Open ${channel} chat`}
+                        onClick={() => setOpenChannelChat(channel as LeadChatChannel)}
+                        className="text-foreground/40 hover:text-foreground"
+                      >
+                        <Icon className="size-3.5" aria-hidden="true" />
+                      </button>
+                    );
                   })}
                 </span>
               ) : null}
@@ -112,9 +140,9 @@ export function LeadDetailsModal({
           <div
             role="tablist"
             aria-label="Lead details sections"
-            className="flex shrink-0 items-stretch gap-5 overflow-x-auto border-b border-black/[0.06] px-4 dark:border-white/10"
+            className="flex shrink-0 flex-wrap items-stretch gap-x-3 gap-y-1 border-b border-black/[0.06] px-4 dark:border-white/10"
           >
-            {DETAIL_TABS.map(([id, label]) => {
+            {DETAIL_TABS.map(([id, label, Icon]) => {
               const isActive = tab === id;
               return (
                 <button
@@ -122,12 +150,22 @@ export function LeadDetailsModal({
                   type="button"
                   role="tab"
                   aria-selected={isActive}
+                  title={label}
                   onClick={() => setTab(id)}
-                  className={`relative shrink-0 py-3 text-xs font-medium transition-colors sm:text-sm ${
+                  className={`group relative flex shrink-0 items-center py-3 text-xs font-medium transition-colors ${
                     isActive ? "text-accent" : "text-foreground/55 hover:text-foreground"
                   }`}
                 >
-                  {label}
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span
+                    className={`overflow-hidden whitespace-nowrap transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                      isActive
+                        ? "ml-1.5 max-w-28 opacity-100"
+                        : "ml-0 max-w-0 opacity-0 group-hover:ml-1.5 group-hover:max-w-28 group-hover:opacity-100 group-focus-visible:ml-1.5 group-focus-visible:max-w-28 group-focus-visible:opacity-100"
+                    }`}
+                  >
+                    {label}
+                  </span>
                   {isActive ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" /> : null}
                 </button>
               );
@@ -177,9 +215,14 @@ export function LeadDetailsModal({
                   <Select.Indicator />
                 </Select.Trigger>
                 <Select.Popover>
-                  <ListBox items={columns.map((c) => ({ id: c.id, label: c.name }))}>
+                  <ListBox items={columns.map((c) => ({ id: c.id, label: c.name, color: c.color }))}>
                     {(opt) => (
                       <ListBox.Item id={opt.id} textValue={opt.label}>
+                        <span
+                          className="mr-2 inline-block size-2.5 shrink-0 rounded-full align-middle"
+                          style={{ backgroundColor: opt.color ?? DEFAULT_COLUMN_COLOR }}
+                          aria-hidden="true"
+                        />
                         {opt.label}
                         <ListBox.ItemIndicator />
                       </ListBox.Item>
@@ -229,15 +272,18 @@ export function LeadDetailsModal({
 
                   <LeadAdditionalPhones leadId={lead.id} />
 
+                  <div className="border-t border-black/[0.06] pt-4 dark:border-white/10">
+                    <LeadTagsTab leadId={lead.id} isActive={tab === "info"} />
+                  </div>
+
                   {detailQuery.isLoading ? <LoadingState label="Refreshing lead…" /> : null}
                 </>
               )}
 
               {tab === "comments" ? <LeadCommentsTab leadId={lead.id} isActive={tab === "comments"} /> : null}
               {tab === "timeline" ? (
-                <LeadTimelineTab leadId={lead.id} workspaceId={workspaceId} isActive={tab === "timeline"} />
+                <LeadTimelineTab leadId={lead.id} workspaceId={workspaceId} boardId={boardId} isActive={tab === "timeline"} />
               ) : null}
-              {tab === "tags" ? <LeadTagsTab leadId={lead.id} isActive={tab === "tags"} /> : null}
               {tab === "conversations" ? (
                 <LeadConversationsTab leadId={lead.id} isActive={tab === "conversations"} />
               ) : null}
@@ -248,13 +294,19 @@ export function LeadDetailsModal({
               {tab === "stats" ? (
                 <LeadStatsTab leadId={lead.id} workspaceId={workspaceId} isActive={tab === "stats"} />
               ) : null}
-              {tab === "ai" ? (
-                <LeadAiAssistTab leadId={lead.id} leadName={formatLeadName(lead)} isActive={tab === "ai"} />
-              ) : null}
               </div>
           </Drawer.Body>
         </Drawer.Dialog>
       </Drawer.Content>
     </Drawer.Backdrop>
+    {openChannelChat ? (
+      <LeadChannelChatDialog
+        channel={openChannelChat}
+        leadId={lead.id}
+        leadPhone={lead.phone_number ?? null}
+        onClose={() => setOpenChannelChat(null)}
+      />
+    ) : null}
+    </>
   );
 }

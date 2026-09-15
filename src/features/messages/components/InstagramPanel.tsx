@@ -70,16 +70,20 @@ const AGENTIC_CHANNEL = "instagram" as const;
 export function InstagramPanel({
   onUnreadChange,
   onChatOpenChange,
+  initialChatId,
 }: {
   onUnreadChange?: (count: number) => void;
   onChatOpenChange?: (open: boolean) => void;
+  /** Pre-select a chat on mount — used by `/messages?channel=instagram&ig_chat=…`,
+   * the "open in inbox" link from the Leads channel-chat popup. */
+  initialChatId?: string | null;
 }) {
   const queryClient = useQueryClient();
   const workspaceId = useSessionStore((s) => s.workspaceId);
   const currentUserId = useSessionStore((s) => s.user?.id);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId ?? null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);

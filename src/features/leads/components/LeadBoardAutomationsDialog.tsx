@@ -20,7 +20,7 @@ export function LeadBoardAutomationsDialog({ boardId, onClose }: { boardId: stri
     <Modal isOpen onOpenChange={(open) => !open && onClose()}>
       <Modal.Backdrop>
         <Modal.Container size="lg">
-          <Modal.Dialog>
+          <Modal.Dialog className="w-full !max-w-4xl">
             <Modal.Header>
               <Modal.Heading>Board automations</Modal.Heading>
             </Modal.Header>

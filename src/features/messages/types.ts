@@ -300,6 +300,64 @@ export function instagramChatName(chat: InstagramChat): string {
   return chat.display_name?.trim() || (chat.username ? `@${chat.username}` : "") || "Unknown";
 }
 
+/** Chat-list preview like the real Instagram app: last message text, or a
+ * typed placeholder for media, prefixed "You:" when the business sent it.
+ * Ported from the old frontend's `buildLastMessagePreview` — the backend
+ * only sends `last_message_text`/`last_message_type`/`last_message_media_type`/
+ * `last_message_direction`, never a precomputed preview string. */
+export function buildInstagramLastMessagePreview(row: Record<string, unknown>): string | undefined {
+  const text = String(row.last_message_text ?? "").trim();
+  const kind = (row.last_message_type as string) || (row.last_message_media_type as string) || "";
+  const body =
+    text ||
+    (kind === "ig_reel"
+      ? "🎬 Reel"
+      : kind === "share"
+        ? "Shared a post"
+        : kind === "story_mention"
+          ? "Mentioned you in their story"
+          : kind === "story_reply"
+            ? "Replied to your story"
+            : kind === "image"
+              ? "📷 Photo"
+              : kind === "video"
+                ? "📹 Video"
+                : kind === "audio"
+                  ? "🎤 Voice message"
+                  : "");
+  if (!body) return undefined;
+  return row.last_message_direction === "outbound" ? `You: ${body}` : body;
+}
+
+/** Maps a raw `instagram_conversations` row (`participant_*` columns, no
+ * precomputed preview) onto the `InstagramChat` shape the UI renders.
+ * Mirrors the old frontend's `mapConversationRow` — without this, every
+ * Instagram chat shows "Unknown", no avatar, and no preview text, since the
+ * backend's raw column names never match the frontend type's field names. */
+export function mapInstagramConversationRow(row: Record<string, unknown>): InstagramChat {
+  const username = (row.participant_username as string) || (row.participant_id as string) || "";
+  const displayName =
+    (row.participant_name as string) ||
+    (row.participant_username as string) ||
+    (row.participant_id as string) ||
+    "";
+  return {
+    id: row.id as string,
+    username: username || null,
+    display_name: displayName || null,
+    profile_pic: (row.participant_profile_pic as string) || null,
+    last_message_at: (row.last_message_at as string) || (row.created_at as string) || null,
+    last_message_preview: buildInstagramLastMessagePreview(row) ?? null,
+    unread_count: (row.unread_count as number) ?? 0,
+    assigned_to: (row.assigned_to as string | null) ?? null,
+    linked_lead_id: (row.linked_lead_id as string | null) ?? null,
+    conversation_closed_at: (row.conversation_closed_at as string | null) ?? null,
+    agentic_paused: Boolean(row.agentic_paused),
+    needs_attention: Boolean(row.needs_attention),
+    unseen_escalations: (row.unseen_escalations as number) ?? 0,
+  };
+}
+
 export function initialsFor(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Avatar, Chip } from "@heroui/react";
 import { Clock } from "@gravity-ui/icons";
@@ -12,6 +12,10 @@ import { RowCheckbox } from "@/features/leads/components/RowCheckbox";
 import { CustomFieldValue } from "@/features/leads/components/CustomFieldValue";
 import { ImageFieldThumbnails } from "@/features/leads/components/ImageFieldInput";
 import { customFieldVisibilityKey, useCardFieldVisibilityQuery } from "@/features/leads/hooks/useFieldVisibility";
+import { LeadChannelChatDialog } from "@/features/leads/components/LeadChannelChatDialog";
+import type { LeadChatChannel } from "@/features/leads/hooks/useLeadChannelChat";
+
+const POPUP_CHANNELS = new Set<string>(["telegram", "instagram"]);
 
 /** One kanban card — traced field-for-field against the old frontend's
  * `LeadCard.tsx` props (`first_name`/`last_name`/`phone_number`/`age`/
@@ -59,6 +63,7 @@ export function LeadCard({
   const deadline = lead.deadline ? new Date(lead.deadline) : null;
   const isOverdue = isLeadOverdue(lead.deadline);
   const channels = lead.connected_channels ?? [];
+  const [openChannelChat, setOpenChannelChat] = useState<LeadChatChannel | null>(null);
 
   // Per-user Kanban-card custom-field visibility (Phase 2c-6) — shares the
   // same `['lead-field-visibility-bundle']` query cache across every
@@ -80,6 +85,7 @@ export function LeadCard({
   }, [visibilityBundle.data?.customFields]);
 
   return (
+    <>
     <div
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.4 : 1, touchAction: "none" }}
@@ -113,9 +119,30 @@ export function LeadCard({
           <div className="flex shrink-0 items-center gap-1">
             {channels.map((channel) => {
               const Icon = CHANNEL_ICONS[channel];
-              return Icon ? (
-                <Icon key={channel} className="size-3 text-foreground/40" aria-label={channel} />
-              ) : null;
+              if (!Icon) return null;
+              if (!POPUP_CHANNELS.has(channel)) {
+                return <Icon key={channel} className="size-3 text-foreground/40" aria-label={channel} />;
+              }
+              return (
+                <button
+                  key={channel}
+                  type="button"
+                  aria-label={`Open ${channel} chat`}
+                  title={`Open ${channel} chat`}
+                  // Stop the pointer event before it reaches the card's own
+                  // `useDraggable` listeners (spread on the outer div) —
+                  // otherwise dnd-kit registers a drag start on mousedown
+                  // before the click ever fires.
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenChannelChat(channel as LeadChatChannel);
+                  }}
+                  className="text-foreground/40 hover:text-foreground"
+                >
+                  <Icon className="size-3" aria-hidden="true" />
+                </button>
+              );
             })}
           </div>
         ) : null}
@@ -174,5 +201,14 @@ export function LeadCard({
         </dl>
       ) : null}
     </div>
+    {openChannelChat ? (
+      <LeadChannelChatDialog
+        channel={openChannelChat}
+        leadId={lead.id}
+        leadPhone={lead.phone_number ?? null}
+        onClose={() => setOpenChannelChat(null)}
+      />
+    ) : null}
+    </>
   );
 }

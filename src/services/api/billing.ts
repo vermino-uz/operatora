@@ -4,7 +4,9 @@ import type {
   BillingInvoice,
   ChargeSubscriptionResponse,
   ConfirmCardResponse,
+  CreateSubscriptionOrderResponse,
   DeclineSeatResponse,
+  PaylovInvoiceResponse,
   SavedPaymentCard,
   StartAddCardResponse,
   TopUpGatewayResponse,
@@ -154,5 +156,45 @@ export const billingApi = {
       method: "POST",
       body: { amount_uzs: amountUzs },
     });
+  },
+
+  // ── Checkout (new-subscription flow — Phase 2f) ─────────────────────────
+  /** `POST /billing/subscriptions` — traced against
+   * `subscriptions.controller.ts`'s `SubscriptionsInternalController`
+   * (JWT-guarded, workspace resolved server-side from the caller unless
+   * `workspace_id` is explicitly passed). Creates a pending order to charge
+   * via `chargeSubscription`/Payme/Click. */
+  async createSubscriptionOrder(body: {
+    plan?: "pro" | "max";
+    cycle: "monthly" | "yearly";
+    workspace_id?: string;
+    customer?: { name?: string; phone?: string; email?: string };
+  }): Promise<CreateSubscriptionOrderResponse> {
+    return apiFetch("/billing/subscriptions", { method: "POST", body });
+  },
+
+  /** `POST /billing/paylov/invoice` — mints a Paylov checkout URL for a
+   * pending subscription order, used alongside (not instead of) the
+   * external HAAD gateway's Payme/Click URLs in the checkout page's
+   * Payme/Click method. */
+  async createPaylovInvoice(
+    workspaceId: string,
+    args: { sub_id: string; amount_uzs: number; description?: string },
+  ): Promise<PaylovInvoiceResponse> {
+    return apiFetch(`/billing/paylov/invoice?workspace_id=${encodeURIComponent(workspaceId)}`, {
+      method: "POST",
+      body: args,
+    });
+  },
+
+  /** `GET /billing/paylov/invoices/:invoiceId` — reconciles a Paylov
+   * invoice's status; polled while a Payme/Click/Paylov popup is open. */
+  async reconcilePaylovInvoice(
+    workspaceId: string,
+    invoiceId: number,
+  ): Promise<{ ok: boolean; status: string; activated?: boolean }> {
+    return apiFetch(
+      `/billing/paylov/invoices/${encodeURIComponent(String(invoiceId))}?workspace_id=${encodeURIComponent(workspaceId)}`,
+    );
   },
 };

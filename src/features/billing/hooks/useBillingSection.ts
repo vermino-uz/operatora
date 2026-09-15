@@ -194,3 +194,31 @@ export function useBalanceTopUpPolling(params: {
 
   return { timedOut };
 }
+
+// ── Checkout (new-subscription flow — Phase 2f) ───────────────────────────
+
+/** Creates a pending subscription order (`POST /billing/subscriptions`).
+ * Unlike the rest of this file, `workspaceId` here is *optional* — the
+ * backend resolves the caller's own workspace server-side when omitted,
+ * matching the old frontend's `createSubscriptionOrder` call (no explicit
+ * workspace param at all). Passed through when known so a multi-workspace
+ * caller always targets the workspace they're actually viewing. */
+export function useCreateSubscriptionOrderMutation(workspaceId: string | null) {
+  return useMutation({
+    mutationKey: ["billing", "create-subscription-order"],
+    mutationFn: (body: { plan?: "pro" | "max"; cycle: "monthly" | "yearly" }) =>
+      billingApi.createSubscriptionOrder({ ...body, workspace_id: workspaceId ?? undefined }),
+    retry: false,
+  });
+}
+
+export function useCreatePaylovInvoiceMutation(workspaceId: string | null) {
+  return useMutation({
+    mutationKey: ["billing", "create-paylov-invoice"],
+    mutationFn: (args: { sub_id: string; amount_uzs: number; description?: string }) => {
+      if (!workspaceId) throw new Error("No workspace selected");
+      return billingApi.createPaylovInvoice(workspaceId, args);
+    },
+    retry: false,
+  });
+}

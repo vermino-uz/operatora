@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { Button, Spinner } from "@heroui/react";
 import { Grip, Pause, Play, Volume, Xmark } from "@gravity-ui/icons";
 
@@ -10,6 +11,9 @@ const PANEL_WIDTH = 320;
 const PANEL_HEIGHT = 168;
 const MARGIN = 16;
 const MOBILE_NAV_OFFSET = 56;
+/** Above HeroUI Drawer/Modal backdrops (`z-50`) so play/pause stays clickable
+ * while a lead drawer (or any overlay) is open. */
+const PIP_Z_INDEX = 200;
 
 function defaultPosition() {
   const mobile = typeof window !== "undefined" && window.innerWidth < 768;
@@ -19,7 +23,9 @@ function defaultPosition() {
   };
 }
 
-/** Floating PiP player — persists across route changes until dismissed. */
+/** Floating PiP player — persists across route changes until dismissed.
+ * Portaled to `document.body` so Drawer/Modal stacking contexts cannot trap
+ * it underneath and block pointer events. */
 export function GlobalAudioPlayer() {
   const {
     isActive,
@@ -46,7 +52,7 @@ export function GlobalAudioPlayer() {
     getDefault: defaultPosition,
   });
 
-  if (!isActive) return null;
+  if (!isActive || typeof document === "undefined") return null;
 
   const dragHandleProps = bindDragSurface((x, y) => setPosition({ x, y }), {
     width: PANEL_WIDTH,
@@ -54,7 +60,7 @@ export function GlobalAudioPlayer() {
     getOrigin: () => position,
   });
 
-  return (
+  return createPortal(
     <div
       data-testid="global-audio-player"
       className="pointer-events-auto"
@@ -63,7 +69,7 @@ export function GlobalAudioPlayer() {
         left: position.x,
         top: position.y,
         width: PANEL_WIDTH,
-        zIndex: 60,
+        zIndex: PIP_Z_INDEX,
         touchAction: isDragging ? "none" : undefined,
       }}
     >
@@ -134,6 +140,7 @@ export function GlobalAudioPlayer() {
           </p>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

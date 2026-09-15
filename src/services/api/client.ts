@@ -32,6 +32,44 @@ function isFormData(body: unknown): body is FormData {
   return typeof FormData !== "undefined" && body instanceof FormData;
 }
 
+/** Minimal, dependency-free JWT payload decode (base64url — no signature
+ * verification, this is client-side introspection only, never a security
+ * boundary). Used solely to read the `wsid` claim off our own access token. */
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const json = typeof atob === "function" ? atob(base64) : Buffer.from(base64, "base64").toString("utf-8");
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Called by the realtime `user_notifications:{userId}` subscription (see
+ * `services/realtime/subscriptions.ts`) when a `session_superseded` event
+ * arrives. Web tokens carry the session id as `wsid` (the backend's
+ * `JwtPayload.wsid` — see `auth-tokens.service.ts`) — only force-logout THIS
+ * browser tab if ITS current access token's `wsid` is in the evicted list;
+ * other still-valid sessions for the same user (other tabs/devices) must
+ * ignore the event. The HTTP 401/SESSION_SUPERSEDED path above remains the
+ * backstop for a tab without a live socket connection when it next calls
+ * the API — this is purely the "log out instantly, don't wait for the next
+ * request" enhancement.
+ */
+export function handleSessionSupersededEvent(evictedSessionIds: unknown): void {
+  if (!Array.isArray(evictedSessionIds) || evictedSessionIds.length === 0) return;
+  const token = tokenStorage.getAccessToken();
+  if (!token) return;
+  const payload = decodeJwtPayload(token);
+  const wsid = typeof payload?.wsid === "string" ? payload.wsid : null;
+  if (!wsid || !evictedSessionIds.includes(wsid)) return;
+  tokenStorage.clear();
+  forceLogoutHandler?.("superseded");
+}
+
 async function parseErrorBody(response: Response): Promise<RawApiErrorBody | null> {
   try {
     const text = await response.text();

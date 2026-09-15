@@ -32,7 +32,10 @@ import type { EskizAccount, EskizBulkSendResult, EskizGuidance, EskizMessage, Es
 export const eskizSmsApi = {
   /** `GET /eskiz/account` — `null` if never connected (not a 404 itself). */
   async getAccount(): Promise<EskizAccount | null> {
-    return apiFetch<EskizAccount | null>(`/eskiz/account`);
+    // Empty body / `null` both mean "not connected". React Query rejects
+    // `undefined` as query data, so never pass that through.
+    const data = await apiFetch<EskizAccount | null | undefined>(`/eskiz/account`);
+    return data ?? null;
   },
 
   /** `GET /eskiz/guidance` — static pricing (`sms_price_uzs`), always

@@ -18,7 +18,7 @@ const REPORTS_KEY = (workspaceId: string | null, period: EskizReportPeriod) =>
 export function useEskizAccountQuery(workspaceId: string | null) {
   return useQuery({
     queryKey: ACCOUNT_KEY(workspaceId),
-    queryFn: () => eskizApi.getAccount(),
+    queryFn: async () => (await eskizApi.getAccount()) ?? null,
     enabled: !!workspaceId,
   });
 }

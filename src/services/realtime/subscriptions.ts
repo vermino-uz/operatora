@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { connectSocket, getSocket } from "@/services/realtime/socket";
 import { chatThreadsQueryKey } from "@/features/chat/hooks/useThreadsQuery";
 import { leadBoardQueryKey } from "@/features/leads/hooks/useLeadBoardQuery";
+import { handleSessionSupersededEvent } from "@/services/api/client";
 
 /**
  * First entry in what ARCHITECTURE.md calls `services/realtime/subscriptions.ts`
@@ -349,6 +350,118 @@ export function subscribeToEskizEvents(handlers: {
  * so this one follows the standard subscribe/invalidate pattern instead of
  * the raw-event pattern above.
  */
+/**
+ * Sixth realtime-subscriptions entry — the personal `user_notifications:{userId}`
+ * topic (see `RealtimeGateway`'s `ALLOWED_PREFIXES`/`topicUserId()`, which
+ * authorizes this topic only for the owning user's own socket). Every
+ * producer that inserts a `notifications` row funnels through the backend's
+ * `RealtimeService.notifyUser()` with the same `{event:'INSERT', table:
+ * 'notifications', new: row}` envelope — confirmed by reading every call
+ * site directly: lead assignment (`right-board-controller.service.ts`), task
+ * assignment (`tasks.service.ts`), the task-overdue sweep
+ * (`task-overdue-sweep.service.ts`), automation notify actions
+ * (`automation.service.ts`), department escalation
+ * (`department-escalation.service.ts`), and admin-sent notifications
+ * (`admin-notifications.service.ts`). Two producers use a distinct `event`
+ * name on the same topic instead of plain `INSERT`:
+ *  - `team_chat_mention` (`RealtimeService.notifyTeamChatMention()`) — still
+ *    `table: 'notifications'`, just a different `event` string so a
+ *    consumer can special-case it (e.g. a toast) instead of only refetching.
+ *  - `session_superseded` (`sign-in.service.ts`/`mobile-auth.service.ts`) —
+ *    `table: 'web_sessions'`/`'mobile_sessions'`, NOT `'notifications'`;
+ *    carries `{evicted_session_ids}`. Handed off to
+ *    `handleSessionSupersededEvent()` (`services/api/client.ts`), which only
+ *    force-logs-out THIS tab if its own token's `wsid` is in the evicted
+ *    list — see that function's doc comment for why the HTTP 401 path is
+ *    still the backstop, not made redundant by this.
+ *
+ * There is no notifications-bell/dropdown UI in this repo yet (`AppSidebar.tsx`'s
+ * bell is an inert icon placeholder, confirmed by reading it) — this
+ * function still invalidates a `userNotificationsQueryKey()` query so that
+ * whenever such a UI is built, it's a query away.  Flagged in `PROGRESS.md`
+ * rather than building a UI speculatively.
+ */
+const NOTIFICATIONS_TABLE = "notifications";
+
+export const userNotificationsQueryKey = (userId: string) => ["user-notifications", userId] as const;
+
+export interface NotificationRow {
+  id?: string;
+  type?: string;
+  title?: string;
+  content?: string;
+  related_id?: string;
+  sender_id?: string;
+  is_read?: boolean;
+  image_url?: string;
+  created_at?: string;
+}
+
+function toNotificationRow(row: Record<string, unknown> | undefined): NotificationRow {
+  if (!row) return {};
+  return {
+    id: typeof row.id === "string" ? row.id : undefined,
+    type: typeof row.type === "string" ? row.type : undefined,
+    title: typeof row.title === "string" ? row.title : undefined,
+    content: typeof row.content === "string" ? row.content : undefined,
+    related_id: typeof row.related_id === "string" ? row.related_id : undefined,
+    sender_id: typeof row.sender_id === "string" ? row.sender_id : undefined,
+    is_read: typeof row.is_read === "boolean" ? row.is_read : undefined,
+    image_url: typeof row.image_url === "string" ? row.image_url : undefined,
+    created_at: typeof row.created_at === "string" ? row.created_at : undefined,
+  };
+}
+
+export function subscribeToUserNotifications(
+  queryClient: QueryClient,
+  userId: string,
+  handlers?: {
+    /** `team_chat_mention` — no dedicated mention UI/state exists in
+     * `features/messages`/`features/chat`/`features/team` yet to feed
+     * (confirmed by reading `TeamChatPanel.tsx`), so this is optional and
+     * currently unused by any caller; wired here so a future mention toast
+     * doesn't need another pass through this file. */
+    onMention?: (row: NotificationRow) => void;
+  },
+): () => void {
+  const socket = getSocket();
+  connectSocket();
+
+  const topic = `user_notifications:${userId}`;
+  const wireEvent = `channel:${topic}`;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const scheduleInvalidate = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      queryClient.invalidateQueries({ queryKey: userNotificationsQueryKey(userId) });
+    }, INVALIDATE_DEBOUNCE_MS);
+  };
+
+  const handlePayload = (payload: RealtimeChannelPayload) => {
+    if (payload?.event === "session_superseded") {
+      const row = payload.new as Record<string, unknown> | undefined;
+      handleSessionSupersededEvent(row?.evicted_session_ids);
+      return;
+    }
+    if (payload?.table !== NOTIFICATIONS_TABLE) return;
+    if (payload.event === "team_chat_mention") {
+      handlers?.onMention?.(toNotificationRow(payload.new as Record<string, unknown> | undefined));
+    }
+    scheduleInvalidate();
+  };
+
+  socket.emit("subscribe", { topic });
+  socket.on(wireEvent, handlePayload);
+
+  return () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    socket.off(wireEvent, handlePayload);
+    socket.emit("unsubscribe", { topic });
+  };
+}
+
 export function subscribeToTeamChatMessages(
   workspaceId: string,
   onChanged: () => void,

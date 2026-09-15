@@ -357,6 +357,32 @@ export function describeLeadLifecycleEvent(
   }
 }
 
+/** `lead_ai_autofill_events` — append-only trail of what
+ * `CallCustomFieldAutofillService` actually wrote to a lead's custom fields
+ * after a call, read-only via the db-proxy (`table-registry.ts`:
+ * `readOnly: true`). Only that backend service inserts rows. */
+export interface LeadAiAutofillEvent {
+  id: string;
+  workspace_id: string;
+  lead_id: string;
+  conversation_id: string | null;
+  board_id: string | null;
+  field_names: string[];
+  field_values: Record<string, unknown>;
+  created_at: string;
+}
+
+/** Human-readable title/detail for one AI autofill event, mirroring
+ * `describeLeadLifecycleEvent`'s shape so `LeadTimelineTab` can render both
+ * kinds of events with the same list markup. */
+export function describeLeadAiAutofillEvent(event: LeadAiAutofillEvent): { title: string; detail: string } {
+  const names = event.field_names.join(", ");
+  return {
+    title: "AI auto-filled from call",
+    detail: names ? `Filled: ${names}` : "No fields filled",
+  };
+}
+
 /** `tasks.controller.ts`'s `operator_tasks` row (`GET /tasks?lead_id=`
  * returns every task ever tied to a lead, any assignee/status — see that
  * controller's own summary). `leads` is the joined `{id,first_name,
@@ -514,6 +540,10 @@ export interface LeadLinkedConversation {
   ai_score: number | null;
   sentiment: string | null;
   entities: unknown;
+  audio_file_path?: string | null;
+  duration?: string | null;
+  operator_name?: string | null;
+  summary?: string | null;
 }
 
 // ============================================================================

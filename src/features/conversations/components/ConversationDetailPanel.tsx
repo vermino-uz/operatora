@@ -45,6 +45,9 @@ import {
 export interface ConversationDetailPanelProps {
   conversationId: string;
   onBack?: () => void;
+  /** When true, the back control is shown even on desktop — used when this
+   * panel is embedded outside the conversations split layout (e.g. lead drawer). */
+  forceBack?: boolean;
 }
 
 function SectionHeader({
@@ -439,7 +442,7 @@ function TranscriptSection({ conversation, displayName }: { conversation: Conver
   );
 }
 
-export function ConversationDetailPanel({ conversationId, onBack }: ConversationDetailPanelProps) {
+export function ConversationDetailPanel({ conversationId, onBack, forceBack }: ConversationDetailPanelProps) {
   const workspaceId = useSessionStore((s) => s.workspaceId);
   const query = useConversationQuery(conversationId);
 
@@ -448,7 +451,9 @@ export function ConversationDetailPanel({ conversationId, onBack }: Conversation
   return (
     <div className="flex h-full min-h-0 flex-col">
       {onBack ? (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-divider bg-background px-4 md:hidden">
+        <div
+          className={`flex h-12 shrink-0 items-center gap-2 border-b border-divider bg-background px-4 ${forceBack ? "" : "md:hidden"}`}
+        >
           <button
             type="button"
             onClick={onBack}

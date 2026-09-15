@@ -804,23 +804,479 @@ Full parity port of the old frontend's per-message context menu, reversing the "
 
 ## Phase 2b — Remaining feature work (not started — next slice)
 - [~] Leads board/list — **core MVP + filters done** (see "Leads Kanban board" and "Leads — filters" writeups above); full parity now tracked as **Phase 2c** above, slice by slice.
-- [ ] Workspace/session bootstrap polish (workspace switcher UI, `workspace_users` role/permissions fetch — currently only global `roles[]` is wired)
-- [x] Extend `services/realtime/subscriptions.ts` beyond the single AI-Chat topic/table entry added in Phase 2b — now four entries (chat threads, workspace presence, Super Agent tasks, **lead board** — added this pass); notifications not yet added.
+- [x] Extend `services/realtime/subscriptions.ts` beyond the single AI-Chat topic/table entry added in Phase 2b — now four entries (chat threads, workspace presence, Super Agent tasks, **lead board** — added this pass); notifications tracked in Phase 2k below.
 - [x] Settings section content — **all 24/24 sections real**, see "Settings page epic — complete" above.
 - [x] Tasks (`/tasks`), AI Dashboards (`/dashboards`), Ads (`/ads` + `/ads-callback`) — done 2026-08-17, see their own dated writeups above.
 - [x] Messages (`/messages`) — done 2026-08-17, see "Messages — customer inbox + team chat" writeup below.
-- [ ] Remaining protected routes (operators, a standalone Billing/plan page distinct from the `billing` *settings* section, forms, gallery) — one folder per route, scoped individually
-- [ ] Admin console pages (workspaces, users, billing, tariffs, etc. under `(admin)/admin/*`) — currently just a placeholder + role gate
 - [ ] `components/ui/` HeroUI wrapper layer — not needed yet since only a handful of features consume HeroUI directly so far; add once patterns repeat enough to be worth extracting
-- [ ] File upload helper (`uploadFile(bucket, file, opts)` per ARCHITECTURE.md) — not built; no feature needs it yet
 
-## Phase 3 — Validation & Hardening
-- [ ] Error/loading/empty/offline states across features
-- [ ] Network-flood audit (dedupe, debounce, retry/backoff)
+Remaining gaps vs. `dev.operatora` (identified 2026-09-12, comparing against `ARCHITECTURE.md` Part 1 route map) are broken into ordered phases below — foundational/blocking work first, then self-contained low-risk pages, then heavier feature pages, admin console last.
+
+## Phase 2d — Workspace/session permission polish (done 2026-09-12)
+- [x] Fetch and apply `workspace_users` role/permissions (tenant-scoped dimension) alongside global `roles[]`. `src/auth/permissions.ts` now exposes `hasWorkspacePermission(effective, module, action)`, `isWorkspaceAdmin(effective)`, and the combined `canAccessModule(roles, effective, module, action)` (global `ADMIN_ROLES` bypass, else falls through to the workspace RBAC matrix) — replacing the old flat `Record<string, boolean>` stub that didn't match the real API shape. `src/hooks/usePermission.ts` gained `useModulePermission(module, action)`, combining `useSessionStore`'s global `roles[]` with the existing `useMyWorkspacePermissionsQuery` (TanStack Query, already fetching `GET /workspace-rbac/me`) — server state stays in the query cache, only the combined boolean result is read at render time, nothing is mirrored into Zustand. Applied it in `AppSidebar.tsx`, replacing the ad hoc inline `permissionsQuery.data?.matrix?.ai_dashboards?.view` check that only considered the workspace dimension.
+- [x] **Verified the actual `/api/auth/me` shape against the old backend source (`auth.controller.ts`/`auth.service.ts`) and confirmed live against `test.operatora.ai`** — it does NOT return workspace `role`/`permissions` (only `{...profile, roles, workspaceId}}`; `resolveAccessContext()` computes a `workspaceRole` internally but the `me` route discards it). The tenant-scoped dimension is exposed on a **separate** endpoint, `GET /api/workspace-rbac/me?workspace_id=`, returning `EffectiveWorkspacePermissions { user_id, workspace_id, workspace_role, role_ids, matrix: PermissionMatrix, scopes: { view_all_leads } }` — a nested per-module/per-action matrix, not the flat map ARCHITECTURE.md's Prisma-derived guess implied. This was already being fetched (`src/features/roles/hooks/useWorkspaceRolesQuery.ts` → `rolesApi.me`), just not combined with global roles in one shared helper until now. Live 401 envelope from `GET /api/workspace-rbac/me` on `test.operatora.ai` matches the controller source exactly, confirming the endpoint/shape.
+- [x] Workspace switcher UI — `src/components/layout/WorkspaceSwitcher.tsx`, HeroUI `Select`/`ListBox` (same compound pattern as `RuleFormModal.tsx`), wired through the existing `useSessionStore` `workspaceId`/`setWorkspaceId` slot (no new Zustand store — session-store already owned this per `ARCHITECTURE.md` state boundaries). Mounted in `AppSidebar.tsx`'s expanding account panel.
+  - **Backend gap found and flagged, not worked around**: a user's session (`/auth/login`, `/auth/me`) only ever resolves to ONE `workspaceId` — `auth.service.ts#getWorkspaceId()` picks the single earliest-created `workspace_users` row — and there is no `GET /workspaces/mine`-equivalent endpoint listing every workspace a user belongs to, nor a "switch active workspace" endpoint (unlike `/auth/switch` for linked *accounts*, which is a different mechanism). Multiple `workspace_users` rows per user can exist in the data (e.g. a platform admin adding an existing user to a second workspace), but nothing exposes that list to the owning user today. Per the "don't fake mutation success / don't fake capability" rule, the switcher renders as a read-only current-workspace indicator today (correct, honest behavior for the common single-workspace case) and upgrades itself to an interactive dropdown the moment `workspaces.length > 1` — the component and the store wiring are ready; only the `workspaces` array's source needs to change once a real list endpoint ships. Flagging this as a backend follow-up rather than building a fake multi-entry list client-side.
+- Unblocks Phase 2l (admin-console gating can now use `canAccessModule`/`useModulePermission` instead of the flat global `isAdmin()` approximation, where a module-level distinction is actually needed there).
+
+## Phase 2e — Public static pages (done 2026-09-12)
+- [x] `/privacy`, `/privacy-policy`, `/terms`, `/terms-of-use`, `/refund`, `/refund-policy`, `/doc`, `/design-system` under `src/app/(public)/`
+- [x] `/form/:formId` (public form submission view)
+- [x] `/extension-connect`
+
+**Legal pages** (`/privacy(-policy)`, `/terms(-of-use)`, `/refund(-policy)`) — content ported verbatim (English locale) from the old app's `app/src/locales/en/legal.json` into `src/features/legal/legalContent.ts` as plain TS data (this app has no i18n layer, so no translation library was added just for three static pages). Shared renderer `src/features/legal/components/LegalPage.tsx` (forced `dark` shell, same pattern as `(auth)/layout.tsx`, restyled with this project's own tokens instead of the old app's hardcoded hex palette). The `-policy`/`-of-use` paths are thin duplicate route files (not redirects) rendering the same content, matching the old app registering both paths for one page.
+
+**`/doc`** — condensed, English rewrite of the old `Doc.tsx` (`src/features/legal/components/DocPage.tsx`), restyled with this project's tokens. The old page embedded ~12 live product screenshots (`/doc/*.webp`) that don't exist in this repo; rather than reference broken images, each of the 7 sections got a short text-only feature summary instead (content/structure preserved, screenshots dropped, not fabricated).
+
+**`/design-system`** — the old app's `/design-system` (`MobileDesignSystem.tsx`) showcased a bespoke mobile component library (`@/components/operatora-mobile`) that doesn't exist in this codebase. Rather than port a design system this project never built, `src/features/legal/components/DesignSystemPage.tsx` showcases *this* project's real tokens (`globals.css` CSS custom properties) and shared primitives (HeroUI `Button`/`TextField`/`Select`/`Chip`, `components/shared/{LoadingState,EmptyState,ErrorState}`).
+
+**`/form/:formId`** — real data fetching against the confirmed backend contract: `GET /api/public/forms/:idOrSlug` (`public-endpoints.controller.ts`, `@Public()`, traced directly in `dev.operatora`'s backend source — not the old frontend's Supabase-edge-function call, which is exactly the compat-shim debt `ARCHITECTURE.md` says not to replicate). RHF + Zod, schema built dynamically per-form (`src/features/forms/publicFormSchema.ts`) since the field set/requiredness is server-defined data. Handles loading/not-found/server-error/network-error/empty-fields/success states (`src/features/forms/components/PublicFormView.tsx`).
+  - **Backend gap found and flagged, not worked around**: there is no NestJS route for the submission side (`form_submissions` insert). The old frontend writes directly to Supabase (`supabase.from("form_submissions").insert(...)`), and the JWT-guarded `POST /db/:table/query` proxy can't be used from an anonymous page either. `publicFormsApi.submit()` calls `POST /public/forms/:idOrSlug` (the natural REST completion of this controller, matching its other `@Public() @Post()` endpoints like `lead-intake`/`feedback`) — **this route does not exist on the backend yet** and needs to be added before real submissions can succeed in production. Per the "never fake mutation success" rule, the frontend surfaces the real 404/501 `ApiError` via a visible error message rather than pretending the submission worked. Full writeup in `src/features/forms/publicFormTypes.ts`.
+
+**`/extension-connect`** — ported from the old app's `ExtensionConnect.tsx`: mints a scoped MCP API key for the Meet Recorder Chrome extension and broadcasts it via a `CustomEvent`. Reuses this app's own already-real `POST /mcp-keys` endpoint (`useCreateMcpKeyMutation`, confirmed contract in `features/mcp-keys/types.ts`) instead of porting the old app's separate `extensionConnectApi.ts` helper — same backend route either way. Handles loading/success/unauthenticated (shows a login link)/error states; guards against the mutation double-firing on remount.
+
+**Proxy fix**: `src/proxy.ts`'s `PROTECTED_PREFIXES` is derived from `ROUTES`, and `ROUTES.doc` (`/doc`) was already in that map — meaning `/doc` would have been incorrectly redirected to `/login` when unauthenticated, contradicting its public-route requirement (confirmed in the old app: `/doc` sits outside the protected route tree). Added a `PUBLIC_ROUTES_WITHIN_ROUTES` exclusion list (currently just `ROUTES.doc`) so routes that are public but still referenced via the shared `ROUTES` map (e.g. for sidebar links) don't get swept into protection.
+
+Verification: `npm run typecheck`, `npm run lint` (scoped to changed files — zero errors/warnings; the full-repo lint run has 46 pre-existing errors/49 warnings in unrelated `features/messages/*` files, untouched by this phase), and `npm run build` (Next.js production build) all pass; the build's route manifest confirms all 10 new routes (`/privacy`, `/privacy-policy`, `/terms`, `/terms-of-use`, `/refund`, `/refund-policy`, `/doc`, `/design-system`, `/extension-connect`, `/form/[formId]`) registered correctly, static where possible.
+
+## Phase 2f — Auth-adjacent pages (done 2026-09-12)
+- [x] `/pricing` under `src/app/(public)/pricing/`
+- [x] `/checkout` under `src/app/(auth)/checkout/`
+- [x] `/welcome` under `src/app/(auth)/welcome/`
+- [x] `/operatora/success` under `src/app/(auth)/operatora/success/`
+
+**Route-group placement, confirmed by reading `App.tsx` directly (not guessed from ARCHITECTURE.md's "Auth-adjacent" label)**: the old app wraps `/pricing` only in `<AuthProvider>`, never `<ProtectedRoute>` — it behaves identically for guests and signed-in users (different CTA only), so it lives under `(public)`, not `(auth)`. `/checkout` and `/welcome` are wrapped the same way (`<AuthProvider>` only) but each page component itself redirects to `/auth` (this rebuild: `/login`) once loading resolves with no user — reproduced with a new small shared hook, `src/features/auth/hooks/useRequireAuth.ts`, rather than folding them into the `(protected)/layout.tsx` guard (which also mounts the full `AppShell`/sidebar these pages must not have). Placed under `(auth)/checkout` and `(auth)/welcome` — that route group already forces the same dark shell and has no protected chrome, matching ARCHITECTURE.md's original folder-structure note ("`/login`, `/signup`, `/welcome` — own layout, no protected shell"). `/operatora/success` needs a literal `/operatora/success` path (route groups don't add path segments), so it's `(auth)/operatora/success/page.tsx`; it works for both signed-in and signed-out landings (a payment popup can return to this URL in a fresh tab), so it uses `useMe()` directly rather than `useRequireAuth`.
+
+**`/pricing` — real finding that changed the build plan**: the task brief (and ARCHITECTURE.md) assumed this page needs `GET /billing/plans` for real plan/tier data. Reading `Pricing.tsx` directly shows it **never calls that endpoint at all** — Pro/Max/Corporate/Free pricing, features, and copy are static marketing content baked into the old frontend's `locales/en/billing.json` i18n bundle. This is also structurally necessary: `BillingController` is `@UseGuards(JwtAuthGuard)` at the class level, so `GET /billing/plans` couldn't work on an unauthenticated pricing page anyway. Ported the real static copy verbatim (English) into `src/features/billing/pricingContent.ts` rather than fabricating a dynamic-plans integration the old page itself doesn't have. The one real network call this page does make — `GET /billing/me` for the signed-in "current plan" banner/CTA state — reuses the already-built `useBillingFeaturesQuery` (Team Members/Settings). CTAs route guests to `/signup?plan=&cycle=` and authed users to `/checkout?plan=&cycle=`, same as the old page.
+
+**`/checkout` — real order + Card payment flow, Payme/Click flagged**: `POST /billing/subscriptions` (creates a pending `subscription_orders` row) is real and traced directly against `subscriptions.controller.ts`'s `SubscriptionsInternalController` (a separate controller from `BillingController`, both mounted at `/billing` — confirmed by reading both files; the comment in `billing.controller.ts` itself points here). Added `billingApi.createSubscriptionOrder`/`createPaylovInvoice`/`reconcilePaylovInvoice` (`src/services/api/billing.ts`) and matching mutations in `useBillingSection.ts`. The **Card** method (`src/features/checkout/components/CheckoutCardPanel.tsx`) is fully real end-to-end, reusing this app's own already-built Settings → Billing hooks (`useBillingCardsQuery`/`useStartAddCardMutation`/`useConfirmAddCardMutation`/`useChargeSubscriptionMutation`/`useWorkspaceBalanceQuery`) rather than duplicating them — add card + OTP confirm, select/pay with a saved card, or pay from workspace balance, all against confirmed `billing.controller.ts` endpoints.
+  - **Backend/integration gap found and flagged, not silently worked around**: the **Payme/Click** method (`src/features/checkout/components/CheckoutPaymeClickPanel.tsx`) additionally depends on an external HAAD payment gateway (`payment.operatora.xyz` in the old app, `NEXT_PUBLIC_PAYMENT_GATEWAY_URL` here) that is **not part of the `dev.operatora` NestJS backend** — it isn't a controller in that repo, so its contract could only be confirmed by reading the old frontend's own call site, not by tracing a real backend controller the way every other endpoint in this app is verified. Ported the real call shape as-is (same URL construction, same fallback default, same "mint Paylov invoice alongside it" behavior via the real `POST /billing/paylov/invoice`) so the flow is wired for real rather than stubbed, but this piece could not be exercised in this environment (no gateway sandbox credentials) — flagged explicitly in the component's own doc comment. Side note for whoever picks this up: this box's PM2 process list has a running `payment` service (`/www/wwwroot/payment`, Django/gunicorn on port 8000) that is very likely this exact gateway — not inspected or touched here since it's outside both this task's scope and the explicitly-authorized `dev.operatora`/`new.operatora.ai` directories, but worth checking first before assuming the gateway is unreachable in this environment.
+
+**`/welcome` — real hook into this repo's own signup flow**: this repo's `SignUpForm.tsx` (phone+OTP registration, materially different from the old app's email/password+plan-picker signup) previously always did `router.replace("/dashboard")` on success with no onboarding step. Extended it to read the same `plan`/`cycle` query params `/pricing`'s CTAs already attach to `/signup?plan=...&cycle=...` (mirroring the old `SignUp.tsx`'s own post-signup branch): a paid plan continues to `/checkout?plan=&cycle=`, otherwise lands on `/welcome?plan=free` — a real completion step instead of skipping onboarding entirely. `CheckoutPageContent`'s `onPaid` also lands here (`/welcome?plan=pro|max`), and `/operatora/success` hands off here once its poll detects the plan activated — the same two entry points the old app's `Welcome.tsx` itself documents.
+  - **Gap flagged, not faked**: the "Set up my workspace with AI" button ports the old app's real behavior (sets the `operatora:autoOpenOnboarding` sessionStorage flag) but this rebuild has no onboarding-wizard widget yet (no equivalent of the old app's `OnboardingWidgetProvider`) to consume that flag — both it and "Skip, I'll do it myself" currently land on `/dashboard` identically. Documented in the component's own doc comment rather than pretending a wizard exists.
+
+**`/operatora/success`** — polls the real `GET /billing/me` (via `billingApi.me`) every 2.5s for up to 60s (mirrors the old page exactly — the redirect back from Payme/Click often lands before the gateway webhook finishes settling), then redirects to `/welcome?plan=pro|max` once active, or shows a "your subscription will be activated shortly" state on timeout. Works whether or not the visitor is signed in, same as the old page.
+
+**Files**: `src/features/billing/pricingContent.ts`, `src/features/billing/components/{PlanCard,PricingPageContent}.tsx`, `src/app/(public)/pricing/page.tsx`; `src/features/billing/types.ts` (added `CreateSubscriptionOrderResponse`/`PaylovInvoiceResponse`), `src/services/api/billing.ts` (added `createSubscriptionOrder`/`createPaylovInvoice`/`reconcilePaylovInvoice`), `src/features/billing/hooks/useBillingSection.ts` (added `useCreateSubscriptionOrderMutation`/`useCreatePaylovInvoiceMutation`), `src/features/checkout/components/{CheckoutCardPanel,CheckoutPaymeClickPanel,CheckoutPageContent}.tsx`, `src/app/(auth)/checkout/page.tsx`; `src/features/auth/hooks/useRequireAuth.ts` (new shared guard), `src/features/auth/components/SignUpForm.tsx` (extended); `src/features/onboarding/components/{WelcomePageContent,PaymentSuccessPageContent}.tsx`, `src/app/(auth)/welcome/page.tsx`, `src/app/(auth)/operatora/success/page.tsx`.
+
+**Verification**: `npm run typecheck` and `npm run lint` (scoped to every file touched/added this phase) both clean — one pre-existing lint error remains in an untouched file (`features/auth/components/LoginHeroVisual.tsx`, `react-hooks/set-state-in-effect`), not introduced by this phase. `npm run build` succeeds; the route table shows all four new routes (`/pricing`, `/checkout`, `/welcome`, `/operatora/success`) registered and prerendering as static content. `new-operatora-dev` (PM2, port 3033) restarted; unauthenticated `GET` on all four returns 200 with the expected guard/loading state in the HTML (`/pricing` renders its real hero copy directly since it's guest-accessible by design; `/checkout`/`/welcome` show their "Checking your session…"/"Loading your account…" guard state since no token is present; `/operatora/success` shows its no-session "Payment successful" + "Sign in" state) — no server crash, no Next.js error overlay. **Not verified** (same standing limitation as every phase since Phase 2a): interactive click-through with a real authenticated session/workspace — recommend exercising, once a test account exists on `operatora_test`: the full pricing → signup → checkout → welcome path for both Pro and Max, the free-plan pricing → signup → welcome path, the Card payment method's add-card/OTP/charge round-trip, the Payme/Click method against the `payment` PM2 service noted above, and `/operatora/success`'s polling hand-off after a real gateway redirect.
+
+## Phase 2g — Operators (done 2026-09-12)
+- [x] `/operators`
+- [x] `/operator-feedbacks`
+
+**Scope clarification vs. the phase brief**: `/operators` is NOT a roster/
+invite screen — that already exists (`src/features/team/` against
+`/admin-users/operators`, Settings → Team). The old frontend's real
+`pages/Operators.tsx` + `components/operators/*` is a **performance
+leaderboard** (AI score, call volume, conversions, internal PBX
+extension, coaching feedback) over a distinct backend entity: the
+`operators` Prisma table (`{id, profile_id, operator_name,
+internal_number, is_active}`, exactly what `leads.assigned_operator_id`
+references), served by four real controllers under `operators-page/*`
+(`operators-page.module.ts`: `OperatorsOverviewController`,
+`OperatorProfileController`, `OperatorConversationsController`,
+`OperatorFeedbackController`) — traced directly against
+`dev.operatora/app/backend/src/operators-page/*` and confirmed live
+(401 envelopes matching the source) against `test.operatora.ai`. A
+separate `conversations-controllers/operators/operators.controller.ts`
+also exists at `POST/GET/PATCH/DELETE /operators` but is a dead NestJS-CLI
+scaffold (`OperatorsService` methods literally `return
+'This action adds a new operator'` — no DB access at all) — confirmed
+not the real endpoint and not used.
+
+**`/operators` — real, full CRUD-adjacent wiring**: `GET
+/operators-page/operators` (roster + profile merge), `GET
+/operators-page/conversations?from&to&limit` (date-ranged call log used
+to compute per-card metrics client-side, capped at 5000 like the old
+page), `GET /operators-page/operator-conversations/:operatorName` (one
+operator's matched history), `GET`/`PATCH
+/operators-page/operator-profile/:profileId` (internal extension
+number — the only editable field on this entity), and all four
+`operators-page/feedback/*` endpoints (`pending/:operatorName`,
+`sample`, `:feedbackId/decision`, `all`) for the admin/sales_manager-only
+coaching-feedback flow. Conversation-to-operator attribution reuses the
+old frontend's real fuzzy name/email matching heuristic verbatim
+(`features/operators/matchConversation.ts#conversationMatchesOperator`,
+ported from `matchConversationToOperator`) since `conversations` has no
+FK to `operators` — not a shortcut introduced here, the old app's real
+mechanism. `canEdit` (show internal-number edit + send-feedback actions)
+is sourced from the session's already-fetched global `roles[]`
+(`MANAGER_ROLES` = admin/demo_admin/super_admin/sales_manager) rather
+than an extra call to `GET /operators-page/my-roles` — same underlying
+`user_roles` data, confirmed by reading `OperatorsPageService
+.getUserRoles`, no duplicate request needed. Page-level access itself
+(`features/operators/permissions.ts#canViewOperatorsPage`) ports the old
+`AuthContext.tsx#canViewPage("operators")` global-role allowlist exactly
+(finance_manager-only accounts are the one role excluded) — this is a
+UX courtesy only; none of these read endpoints check workspace RBAC or
+even the global role server-side (only the four feedback write
+endpoints do, via a real `ForbiddenException`).
+
+CSV export from the old `AllFeedbacksDialog.tsx` was dropped (client-only
+convenience, no backend dependency, easy to add back later) to keep this
+pass focused on real data wiring. The "operator conversations" drill-in
+reuses the already-built `ConversationDetailPanel` (via its `forceBack`
+prop) instead of duplicating a second conversation-detail view.
+
+**`/operator-feedbacks` — real gap found and NOT worked around**: this
+page's actual old-frontend contract (`pages/OperatorFeedbacks.tsx`) reads
+`feedback`/`quizzes`/`quiz_attempts` directly via `supabase.from(table)`
+(Postgres RLS did the per-operator filtering). None of the four
+`operators-page/feedback/*` REST endpoints fit this page's real shape:
+`pending/:operatorName` and `all` are both hard admin/sales_manager-gated,
+and `pending` is the wrong status anyway (this page needs *approved*
+feedback). **There is no dedicated REST controller for "my own approved
+feedback + quizzes + attempts"** — confirmed by reading every controller
+under `operators-page/*` and `admin/controllers/admin-feedback.controller.ts`.
+
+Used the same sanctioned escape hatch this codebase already relies on for
+tables with no dedicated controller (`services/api/cannedResponses.ts`
+against `canned_responses`): the generic `POST /db/:table/query` proxy.
+`feedback`/`quizzes` are `scope: 'workspace'` and `quiz_attempts` is
+`scope: 'user'` in the backend's `table-registry.ts` — the `user` scope
+means reads/writes are confined to the caller's own rows **server-side**,
+a real enforced boundary, not a client-side filter. Built
+`services/api/operatorFeedbackSelf.ts` (`myApprovedFeedback`/`myQuizzes`/
+`myQuizAttempts`/`submitQuizAttempt`) using `overlaps` (`&&`) to match any
+of the caller's known identity strings (email / full name) against
+`target_operators`/`operator_name`, mirroring the admin side storing a
+single free-text identity string per target.
+
+**Second, deeper backend gap found and flagged, not silently worked
+around**: the old frontend's quiz-generation call
+(`supabase.functions.invoke('generate-feedback-quiz', {feedbackId,
+feedbackContent, targetOperators})`, triggered server-side today by
+`OperatorsPageService.invokeGenerateQuiz` whenever an admin approves
+feedback) does **not** map onto this backend's real
+`POST /fn/generate-feedback-quiz` handler
+(`functions/functions.handlers.ts#generateFeedbackQuiz`) — that inline
+handler takes a `{topic}` body and returns a **stateless** `{quiz:
+[...]}` AI generation with **zero database persistence** (no `quizzes`
+row is ever inserted). This means "approve feedback → a quiz
+automatically appears for the operator" is already non-functional on
+this backend, independent of anything built in this pass. Per the
+project's "flag gaps, don't fake them" rule: this page offers **no
+"generate quiz" action at all** (the old page's `generateQuiz()`/"Create
+quiz" button is dropped, not faked); it only renders/lets the operator
+take a quiz that *already exists* in the `quizzes` table, and records
+their own `quiz_attempts` row on submit (which the `scope: 'user'` proxy
+rule genuinely supports). Updating the parent `quizzes.status` to
+`"completed"` after a submit is also deliberately skipped — `quizzes`
+has `writeRoles: MANAGER_ROLES` in `table-registry.ts`, so a plain
+`operator`-role caller would get a real 403 on that write; "already
+attempted" is instead derived purely from the operator's own
+`quiz_attempts` rows, sidestepping the gap rather than hiding a
+guaranteed-403 call behind a swallowed error. Full trace in
+`services/api/operatorFeedbackSelf.ts`'s doc comment.
+
+Content rendering is plain `whitespace-pre-wrap` text rather than the old
+page's markdown-to-HTML + `dangerouslySetInnerHTML` (`SafeHtml`) —
+feedback `content` is admin-authored free text; not worth reintroducing
+an HTML-injection surface for a handful of `**bold**`/bullet conventions.
+Page-level access (`canViewOperatorFeedbacksPage`) ports the old
+allowlist exactly: `operator` role (+ admins) only, not `sales_manager` —
+this is a personal "my feedback" view, not a management screen, unlike
+`/operators`. No sidebar nav link was added (the old app never had one
+for this route either — direct-URL only), but it's still listed in
+`constants/routes.ts` (`operatorFeedbacks`) purely so `proxy.ts`'s
+auto-derived protected-prefix list covers it.
+
+**Files**: `src/features/operators/{types,permissions,matchConversation}.ts`,
+`src/features/operators/hooks/{useOperatorsQuery,useOperatorConversationsQuery,
+useOperatorProfile,useOperatorFeedback,useOperatorConversationsByNameQuery,
+useMyFeedback}.ts`, `src/features/operators/components/{OperatorCard,
+EditOperatorModal,SendFeedbackModal,AllFeedbacksModal,
+OperatorConversationsModal,OperatorsPageContent,QuizModal,
+OperatorFeedbacksPageContent}.tsx`, `src/services/api/{operators,
+operatorFeedbackSelf}.ts`, `src/app/(protected)/operators/page.tsx`,
+`src/app/(protected)/operator-feedbacks/page.tsx`; nav wiring:
+`src/constants/sitemap.ts` (new `operators` top-level item), `src/constants/
+routes.ts` (`operatorFeedbacks`), `src/components/layout/AppSidebar.tsx`
+(role-filtered visibility for the new nav item).
+
+**Verification**: `npm run typecheck` and a scoped `npx eslint` over every
+file touched/added this phase both clean (fixed two real lint findings
+along the way: a `react-hooks/preserve-manual-memoization` in
+`useMyIdentities`'s dependency array, and a `react-hooks/
+set-state-in-effect` in `EditOperatorModal` — replaced with the same
+render-time "adjust state on data change" pattern already established in
+`EditMemberModal`, not a `useEffect`). `npm run build` succeeds; the
+route table shows both `/operators` and `/operator-feedbacks` registered,
+prerendering as static content. `new-operatora-dev` (PM2, port 3033)
+restarted; unauthenticated `GET` on both returns a 307 to
+`/login?next=...` (the edge `proxy.ts` pre-check working correctly for
+both, including the not-in-sidebar `/operator-feedbacks`) — no server
+crash, no 500, no Next.js error overlay. **Not verified** (same standing
+limitation as every phase since Phase 2a): interactive click-through with
+a real authenticated session that actually holds `operator`/
+`sales_manager`/admin roles and has real `operators`/`feedback`/
+`quizzes`/`quiz_attempts` rows on `operatora_test` — recommend exercising
+once such a seeded account exists, specifically: the internal-number
+edit round-trip, the sample-feedback send + approve/reject flow, the
+`db`-proxy reads on `/operator-feedbacks` (particularly confirming the
+`overlaps` filter matches real `target_operators`/`operator_name` data
+shapes), and a full quiz take-and-submit cycle against a manually
+seeded `quizzes` row (since, per the gap above, none will be generated
+organically today).
+
+## Phase 2h — Instructions + Social Media Advisor (done 2026-09-12)
+- [x] `/instructions`
+- [x] `/social-media-advisor`
+
+**`/instructions` — real, full db-proxy-backed CRUD, same escape hatch as
+`canned_responses`/operator self-feedback**: traced to the old frontend's
+`pages/Instructions.tsx`, which reads/writes `instructions` via
+`supabase.from('instructions')`. Grepped the entire backend source tree
+for "instruction" — no dedicated `InstructionsController` exists anywhere;
+`table-registry.ts` confirms `{ table: 'instructions', scope: 'workspace',
+writeRoles: MANAGER_ROLES }`, so this is the sanctioned "no dedicated
+controller yet" `POST /db/:table/query` proxy, exactly like
+`services/api/cannedResponses.ts`. Built `services/api/instructions.ts`
+(list/create/update/remove/reorder) and the matching feature folder
+(`features/instructions/{types,schema,permissions}.ts`,
+`hooks/useInstructions.ts`, `components/{InstructionCard,
+InstructionFormModal,InstructionsPageContent}.tsx`). Reordering uses plain
+up/down buttons instead of the old page's `react-dnd` drag-and-drop — same
+`display_order` persistence, no new dependency added.
+
+The old page's other two tabs are also real, separate tables, same proxy
+pattern: **Quick Links** (`quick_links`, `{ scope: 'workspace',
+writeRoles: MANAGER_ROLES }` — `services/api/instructions.ts`'s
+`quickLinksApi`, `components/QuickLinksPanel.tsx`) and **AI Mentor**, a
+genuinely working coaching chat over `POST /fn/ai-mentor` (confirmed real:
+`FunctionsController` dispatches `'ai-mentor'` as `status: 'inline'` ->
+`FunctionsHandlersService.aiChatHandler('mentor', body, user)` ->
+`AiChatService.chat()` — plain `{message}` → `{reply}`, no special-casing
+needed, unlike `lead-assist`). Built `services/api/aiMentor.ts` and
+`hooks/useAiMentorChat.ts`, mirroring `useLeadAiAssistChat`'s "local,
+non-persisted thread" reasoning exactly (no GET to resume a thread from).
+
+Page-level access (`features/instructions/permissions.ts#
+canViewInstructionsPage`) ports `AuthContext.tsx#canViewPage("instructions")`
+verbatim: true for every role except `finance_manager`. Edit gating
+(`canEditInstructions`) ports the old page's `canEditInstructions =
+isGlobalAdmin` **exactly as coded** — admin/demo_admin/super_admin only,
+deliberately NOT extended to `sales_manager` even though the backend's
+`writeRoles: MANAGER_ROLES` would technically allow it; the old UI was
+stricter than the backend here and this rebuild preserves that, not the
+backend's looser ceiling. Wired into `AppSidebar`/`APP_SITEMAP` the same
+way `/operators` is (per-key permission filter, not the workspace RBAC
+matrix — there is no `instructions` `PermissionModule`).
+
+**`/social-media-advisor` — confirmed backend gap on the core feature,
+flagged and NOT worked around; a smaller real feature shipped instead**:
+the old page's two central actions — "Analyze Conversations"
+(`wordFrequency`/`topTopics` extraction over the workspace's conversation
+history) and "Generate Content Ideas" (turning those topics into
+AI-drafted posts) — called a Supabase edge function `social-media-advisor`
+with `{action: 'analyze_conversations' | 'generate_content_ideas' |
+'get_content_ideas', data}`. On this backend, `social-media-advisor` is
+registered `status: 'inline'` in `functions.registry.ts`, but
+`functions.handlers.ts#aiChatHandler('social-media', body, user)` is the
+exact same **generic** unified-chat dispatcher used for `ai-mentor`/
+`lead-ai-assist`/etc — it only ever reads `body.message`/`body.prompt` and
+calls `AiChatService.chat()`, which throws a 400
+(`BadRequestException('message majburiy')`) on the old frontend's
+`{action, data}` shape (no `message` field). Grepped the full backend tree
+for `wordFrequency`/`topTopics`/`analyze_conversations`/
+`generate_content_ideas`/`get_content_ideas` — zero matches anywhere.
+This confirms "analyze conversations → auto-generate ideas" is not
+implemented server-side in any form this rebuild could call, independent
+of anything built here. Per "flag gaps, don't fake them": this page does
+**not** offer "Analyze Conversations" or "Generate Content Ideas from
+topics" buttons — dropped outright, not faked with client-side
+word-counting or hardcoded ideas.
+
+What IS real and shipped: (1) an **AI Advisor chat** tab — the
+`social-media` chat mode genuinely works as free-text advice
+(`MODE_CONFIG['social-media']`: post ideas/captions/hashtags/schedule
+advice), built the same way as AI Mentor
+(`services/api/socialMediaAdvisor.ts`, `hooks/useAdvisorChat.ts`,
+`components/AdvisorChatPanel.tsx`); (2) a **Content Ideas** manager over
+the real `content_ideas` table (`{ scope: 'workspace', writeRoles:
+MANAGER_ROLES }`) — manual create/mark-done/delete, same db-proxy escape
+hatch (`services/api/contentIdeas.ts`); (3) **Save/bookmark** into
+`saved_content_ideas` (`{ scope: 'user', writeRoles: ALL_APP_ROLES }`),
+mirroring the old `ContentIdeasList.tsx#saveIdea` insert exactly (same
+fields copied, `original_idea_id` back-reference; `user_id` is
+auto-injected server-side by the proxy's `scope: 'user'` rule, confirmed
+in `db-proxy.service.ts`'s insert path — never sent by the client).
+
+Explicitly dropped as out of scope for this pass, not silently rolled
+into the above (real tables exist for all of these —
+`content_plans`/`content_plan_items`/`content_plan_rows`/
+`content_calendar`/`content_items` — but the old UI surface
+(`SimplifiedPlansManager`, weekly planner grid, content calendar,
+content-item AI-generation pipeline) is large and separate from this
+phase's brief; a rushed partial port would be worse than flagging it
+here for a dedicated pass later).
+
+Page-level access (`features/social-media-advisor/permissions.ts#
+canViewSocialMediaAdvisorPage`) ports `canViewPage("social-media-advisor")`
+verbatim — unlike `/instructions`, that string never appears in ANY
+per-role allowlist in the old `AuthContext.tsx`, so only the
+unconditional `super_admin`/`admin`/`demo_admin` early-return grants
+access; `sales_manager` is excluded too (stricter than `/instructions`,
+confirmed by reading the old function directly, not inferred). Wired into
+`AppSidebar`/`APP_SITEMAP` the same per-key-filter way.
+
+Both pages verified: `npm run typecheck`, `npm run lint`, and `npm run
+build` all clean for the files touched (pre-existing unrelated lint
+errors in `features/messages/*` left untouched, out of scope). Confirmed
+live against `test.operatora.ai`: `POST /api/db/instructions/query`,
+`POST /api/db/content_ideas/query`, `POST /api/db/quick_links/query`,
+`POST /api/fn/social-media-advisor`, and `POST /api/fn/ai-mentor` all
+return `401` (auth-guarded, matching the expected contract — the routes
+exist and are reachable). `GET /instructions` and `GET
+/social-media-advisor` against the running `new-operatora-dev` PM2
+instance both `307`-redirect to `/login` when unauthenticated, same as
+every other protected route in this app; no server-side runtime errors in
+PM2 logs.
+
+## Phase 2i — Forms + Gallery (done 2026-09-12)
+- [x] `/forms` — form BUILDER (distinct from the public `/form/:formId` submission view built in Phase 2e). Reference: old `pages/Forms.tsx` +
+  `components/forms/{CreateFormDialog,EditFormDialog,FormSubmissionsDialog}.tsx`. Confirmed by grepping the whole backend `src/` tree: there is
+  **no dedicated `FormsController`** — only the public read-only `GET /public/forms/:idOrSlug` (`public-endpoints.controller.ts`, used by the
+  Phase 2e submission view). `forms`/`form_submissions` DO have a `db-proxy/table-registry.ts` entry (`scope: 'workspace'`, `writeRoles:
+  MANAGER_ROLES` on `forms`), so the builder's CRUD goes through the sanctioned db-proxy escape hatch (`services/api/forms.ts`), same category
+  as the existing `instructions.ts`/`cannedResponses.ts` precedent. Since the db-proxy has no relational-join/embedded-count support ("bizda rel
+  join'lar yo'q" — `db-proxy.service.ts`), per-form submission counts are computed client-side from one `form_submissions` list query instead of
+  the old (Supabase) frontend's `form_submissions(count)` embed — see `formsApi.submissionCounts()`.
+  - Built: `features/forms/{types,schema,permissions}.ts`, `services/api/forms.ts`, `features/forms/hooks/useForms.ts`,
+    `features/forms/components/{FormsPageContent,FormEditorModal,FormSubmissionsDialog}.tsx`, `app/(protected)/forms/page.tsx`.
+  - List/grid of forms with status/type badges, field + submission counts, public link copy/open; create/edit modal with RHF+Zod, dynamic field
+    array (`useFieldArray`, `@dnd-kit` NOT needed — no drag-reorder in the old builder either, just add/remove), lead-intake preset auto-populate
+    when `type` switches to `"leads"` (mirrors old `CreateFormDialog`); read-only submissions table (plain `<table>`, no server pagination to
+    drive TanStack Table off of — same precedent as `SoldLeadsTable`); bulk delete + clear-all.
+  - Page-level gating (`canViewFormsPage`) ports the old `AuthContext.tsx#canViewPage("forms")` allowlist exactly (super_admin/admin/demo_admin/
+    sales_manager/default → yes; finance_manager/operator → no); write gating (`canEditForms`) mirrors the db-proxy's `writeRoles: MANAGER_ROLES`
+    exactly, UX-courtesy only — the backend is the real boundary.
+  - **Confirmed backend gap, not worked around**: the public form's actual submission insert (`POST /public/forms/:idOrSlug`) still doesn't
+    exist server-side (flagged in Phase 2e's `publicFormTypes.ts`) — the builder itself is fully real/functional (create/edit/delete/list/view
+    submissions all work today), but a freshly-created form's public link can't yet be filled out end-to-end until that route ships.
+- [x] `/gallery` — grid browser over the `generated-media` bucket. Unlike `forms`, this has a real, dedicated, fully-featured REST controller
+  (`generated-media/generated-media.controller.ts` — `list/upload/generate/catalogize/edit/instagram-variants/quota/getOne/remove`), confirmed by
+  reading `generated-media.service.ts` directly — no db-proxy needed here. Reference: old `pages/Gallery.tsx`. No page-level permission gate,
+  matching the old route's bare `<ProtectedRoute>` (auth-only); the sidebar deliberately hides this entry in both apps (`constants/sitemap.ts`'s
+  doc comment) — reachable only via direct link (from AI Chat in the old app).
+  - Built: `features/gallery/types.ts`, `services/api/generatedMedia.ts`, `features/gallery/hooks/useGeneratedMedia.ts`,
+    `features/gallery/components/GalleryPageContent.tsx`, `app/(protected)/gallery/page.tsx`.
+  - Source/kind filters, quota banner, upload (multi-file, source photos), delete, regenerate (chat-sourced images), preview lightbox, prompt
+    viewer, multi-select (max 10) + batch "make catalog images"/"batch edit" actions, Instagram caption-variant generator — full parity with the
+    old page's feature set (not trimmed down), all against the real endpoints above. `isPlanLimitError()` distinguishes the backend's
+    `code: 'plan_limit'` 403 from a generic forbidden, matching the old page's `isPlanLimitError` UX (quota-exhausted messaging vs. a bare
+    "forbidden").
+  - Server-side workspace-override query param (`?workspace_id=`) used the same way `services/api/higgsfield.ts` already established for this
+    exact backend pattern (`resolveWorkspace()` re-verifying membership either way) — not a violation of "never send `workspace_id` expecting it
+    to scope data" (ARCHITECTURE.md #103), since the backend re-derives/re-verifies it, it's just an explicit override of the JWT's default.
+  - **Phase 2k's upload-helper item is satisfied by this work** — see below.
+
+## Phase 2j — Finance (done 2026-09-12)
+- [x] `/finance` — standalone workspace **tuition/course-payment back-office**, NOT a billing/plan page. The scoping note in this section's original one-liner ("standalone billing/plan page… distinct from `billing` settings") turned out to be a wrong guess once the old page was actually read: `pages/Finance.tsx` +
+  `components/finance/{FinanceAnalytics,CoursesTab,GroupsTab,PaymentsTab,ExpensesTab,AuditLogsTab,SMSTab,CategoryManagementDialog}.tsx` has nothing to do with Operatora's own subscription — it's a courses/groups-of-students/tuition-payments/expenses back-office some workspaces run their own tutoring-style business through (`courses`, `groups`, `group_users`, `clients`, `payments`, `expenses`, `expense_categories`, `finance_audit_logs`), gated to `finance_manager` (+ admin-tier roles) by the old `AuthContext.tsx#canViewPage("finance")` allowlist — notably `sales_manager` is EXCLUDED from this one page (the only page where that's true), while `finance_manager` — who can't see almost anything else — gets it.
+  - **Confirmed backend gap, not worked around**: grepped the whole backend `src/` tree for a `FinanceController`/`'finance'` `@Controller` — none exists. Every table above has a real `db-proxy/table-registry.ts` entry (`scope: 'workspace'`, `writeRoles` split between `MANAGER_ROLES` for structure tables (`courses`/`groups`/`group_users`/`clients`) and `['finance_manager', ...ADMIN_ROLES]` for money-movement tables (`payments`/`expenses`/`expense_categories`) — confirmed by reading `table-registry.ts` directly), so this is the sanctioned db-proxy escape hatch, same category as `forms.ts`/`instructions.ts`. One subtlety worth flagging explicitly: none of these tables carry `workspace_id` in the `schema.prisma` snapshot `ARCHITECTURE.md`'s Part 1 was written against — confirmed via the migrations directory that `workspace_id` was added to all of them later, in `0030_workspace_id_backfill_sweep.sql`, so the tables genuinely are workspace-scoped today even though the original architecture pass's Prisma read wouldn't have shown it.
+  - Built: `features/finance/{types,schema,permissions,utils}.ts`, `services/api/finance.ts` (`coursesApi`/`groupsApi`/`groupUsersApi`/`clientsApi`/`paymentsApi`/`expenseCategoriesApi`/`expensesApi`/`financeAuditLogsApi`, all db-proxy-backed), `features/finance/hooks/useFinance.ts` (query/mutation hooks + a dedicated `useFinanceAnalyticsQuery` that recomputes the old `FinanceAnalytics.tsx`'s metrics client-side from separate scoped queries — the db-proxy has no relational-join support, same "bizda rel join'lar yo'q" constraint `forms.ts`/`formsApi.submissionCounts()` already documented), `features/finance/components/{FinancePageContent,FinanceAnalyticsTab,CoursesTab,CourseEditorModal,GroupsTab,GroupEditorModal,GroupMembersModal,PaymentsTab,ExpensesTab,AuditLogTab,RhfFieldError}.tsx`, `app/(protected)/finance/page.tsx`.
+  - Page gating (`canViewFinancePage`) ports `canViewPage("finance")` verbatim via `hasAnyRole`/`usePermission`'s underlying mechanism — a pure global-role allowlist, since there's no workspace-RBAC `finance` module in `features/roles/types.ts`'s `PermissionModule` union (confirmed by reading it directly) for `useModulePermission`/`canAccessModule` to gate against; write gating splits into `canManageFinanceStructure` (courses/groups/clients, `MANAGER_ROLES`) and `canManageFinanceRecords` (payments/expenses/categories, `finance_manager` + admin-tier) mirroring the backend's own two `writeRoles` sets exactly.
+  - Not linked from the sidebar (`constants/sitemap.ts`/`AppSidebar.tsx` untouched) — reachable only via direct `/finance` link, same as `/forms`/`/gallery` in this repo already (neither of those got a nav entry either); revisit together if/when sidebar nav for these secondary pages gets designed.
+  - **Deliberately scoped down from the old page, not silently dropped** (documented in `FinancePageContent.tsx`'s doc comment too):
+    - **SMS tab dropped entirely.** The old `SMSTab.tsx` (~880 lines) is a bespoke campaign builder against `sms_campaigns`/`sms_templates` with an audience picker across groups/manual numbers — a large, separate messaging sub-feature that would duplicate this app's existing Eskiz/lead-SMS infrastructure (`features/eskiz/`, `useEskizSms.ts`) under a different data shape. Real tables exist; a dedicated pass should design how (or whether) this should share infrastructure with the existing SMS features rather than forking a second campaign builder.
+    - **Group month-planner grid dropped.** The old `GroupsTab.tsx` (~2000 lines) combined roster management with a `group_months` table-backed monthly billing-period grid (planned/active/completed month windows, inline per-cell payment recording) and inline ad-hoc client creation, all in one modal. This rebuild splits that into: plain roster management (`GroupMembersModal` — add/remove members, monthly-amount override, quick "new client" form) + a standalone Payments tab where a payment is recorded against a chosen member directly. `group_months` itself is unused by this pass — real table, no UI built against it, flagged here rather than faked.
+    - Category management for expenses is a compact inline panel (`ExpensesTab`'s "Manage categories" toggle) rather than the old page's separate `CategoryManagementDialog.tsx`; category *editing*/reordering/delete aren't built — only create + active/inactive toggle (categories are never hard-deleted in the old page either, just deactivated).
+  - No i18n layer in this rebuild yet (matches every other Phase 2 page) — English only, unlike the old page's `finance` i18next namespace.
+  - Verified: `npm run typecheck`, `npm run lint` (zero errors/warnings in any `finance` file; the 46 pre-existing errors/48 warnings lint reports are all in `features/messages/**` and unrelated to this work), and `npm run build` all clean; `/finance` appears in the build's static route list. Confirmed live against the running `new-operatora-dev` PM2 dev instance (port 3033): `GET /finance` returns 200 with no server-side render errors in PM2 logs (client redirects to `/login` when unauthenticated, same pattern as `/forms`); `POST /api/db/{courses,groups,group_users,clients,payments,expenses,expense_categories,finance_audit_logs}/query` against `test.operatora.ai` all return `401` unauthenticated (auth-guarded, routes exist and are reachable, matching the expected db-proxy contract).
+
+## Phase 2k — Realtime notifications + upload helper (done 2026-09-12)
+- [x] Wire `user_notifications:{userId}` topic into `services/realtime/subscriptions.ts` (lead assignment, task assignment/overdue, automation notify, department escalation, admin notifications, `team_chat_mention`, `session_superseded`)
+  - **Confirmed against the real backend** (`dev.operatora/app/backend/src/realtime/realtime.gateway.ts` + `realtime.service.ts`, read-only) before wiring — ARCHITECTURE.md's event-catalog summary held up: every producer that inserts a `notifications` row (lead assignment in `right-board-controller.service.ts`, task assignment in `tasks.service.ts`, the task-overdue sweep in `task-overdue-sweep.service.ts`, automation notify actions in `automation.service.ts`, department escalation in `department-escalation.service.ts`, admin-sent notifications in `admin-notifications.service.ts`) funnels through `RealtimeService.notifyUser()` with the identical `{event: 'INSERT', table: 'notifications', new: row}` envelope on `user_notifications:{userId}` — confirmed by reading every call site, not just the service wrapper. Two producers use a distinct `event` on the same topic: `team_chat_mention` (`RealtimeService.notifyTeamChatMention()`, still `table: 'notifications'`) and `session_superseded` (`sign-in.service.ts` for web sessions / `mobile-auth.service.ts` for mobile, `table: 'web_sessions'`/`'mobile_sessions'`, payload `{evicted_session_ids}}`, NOT `table: 'notifications'`). The `notifications` Prisma model's real columns (`id, user_id, type, title, content, is_read, related_id, image_url, created_at`) don't include `sender_id`/`senderName` as persisted columns — `notifyTeamChatMention()` adds `sender_id` ad hoc into the socket payload only (not into the DB insert), so `NotificationRow` in `subscriptions.ts` treats `sender_id` as optional/wire-only, matching reality rather than assuming it round-trips through a later REST fetch.
+  - Built `subscribeToUserNotifications(queryClient, userId, handlers?)` in `src/services/realtime/subscriptions.ts`, following this file's established five-entries pattern exactly (`getSocket()`/`connectSocket()`, `subscribe`/`unsubscribe` emits, debounced `queryClient.invalidateQueries` on a topic-scoped query key, unsubscribe-returning lifecycle). On any `table: 'notifications'` payload (including `team_chat_mention`) it debounce-invalidates a new `userNotificationsQueryKey(userId)` query key. On `session_superseded` it does NOT invalidate a query — it hands the row straight to a new `handleSessionSupersededEvent()` in `services/api/client.ts`.
+  - **`session_superseded` — checked whether this duplicates existing handling, and it partially does, so the new code defers to it rather than re-implementing it.** `client.ts`'s existing HTTP 401 path already force-logs-out on the `SESSION_SUPERSEDED` marker (`registerForceLogoutHandler`/`forceLogoutHandler`, wired in `app/providers.tsx`'s `ForceLogoutBridge`) — but only reactively, the next time that tab makes an API call. The realtime delivery's whole value-add is *instant* logout without waiting for a request. Added `handleSessionSupersededEvent(evictedSessionIds)` to `client.ts` (co-located with the existing SESSION_SUPERSEDED/`forceLogoutHandler` logic it reuses) — it decodes the current access token's `wsid` claim (a small dependency-free base64url JWT payload decode, no signature verification, purely client-side introspection — the backend's `JwtPayload.wsid` is the web-session id per `auth-tokens.service.ts`) and only force-logs-out THIS browser tab if its own `wsid` is in the evicted list, so other still-valid tabs/devices for the same user correctly ignore the event instead of all logging out together. The HTTP path remains the backstop for a tab with no live socket.
+  - **`team_chat_mention` — checked `features/messages`/`features/chat`/`features/team` first; no dedicated mention UI/state exists yet** (`TeamChatPanel.tsx` only has a doc-comment mentioning "@mention notifications", nothing wired). `subscribeToUserNotifications()` accepts an optional `onMention` handler so a future mention toast/badge doesn't need another pass through this file, but no caller passes one yet — flagged as a real gap, not worked around.
+  - **No notifications-bell/dropdown UI exists in this repo** — `AppSidebar.tsx`'s bell is an inert icon placeholder (`disabled`, "icon placeholder only, no dropdown/data wired yet", confirmed by reading it directly). Building one wasn't requested and would be speculative (unknown desired UX — dropdown vs. page, read/marking, etc.), so this pass is plumbing-only: `userNotificationsQueryKey(userId)` exists and gets invalidated correctly, but nothing currently subscribes to that key. **Flagged as the actual remaining gap** for a future pass: (1) design the bell dropdown/list UI, (2) confirm the REST read endpoint for notification history (the db-proxy `notifications` table entry, `scope: 'user'`, is the natural fit — `POST /db/notifications/query` — not yet wired into a `notificationsApi`/query hook in this repo), (3) wire `onMention` once a mention UI exists.
+  - Subscription is mounted globally (not page-scoped, since notifications aren't tied to one page) via a new `UserNotificationsBridge` in `app/providers.tsx`, following the exact same lifecycle pattern as the existing `ForceLogoutBridge` in that file — subscribes once `useSessionStore`'s `user.id` is known, unsubscribes on user change/logout/unmount.
+  - Verified: `npm run typecheck` (clean), `npm run lint` (zero new errors/warnings in any file touched by this change — the 46 errors/48 warnings lint reports are 100% pre-existing, all in unrelated `features/messages/**` files), `npm run build` (Next.js production build succeeds, all 43 routes compile).
+- [x] `uploadFile(bucket, file, opts)` helper per `ARCHITECTURE.md` API/Service Layer Contract — built in Phase 2i for Gallery's source-photo
+  upload. `services/api/uploadFile.ts` (`uploadFile()` + `validateFile()`/`FileValidationError`) is a generic multipart-POST helper on top of the
+  centralized `apiFetch` (so auth headers/401-retry/error-normalization still apply), taking a plain request `path` rather than a literal bucket
+  name since some upload endpoints go through the generic `/storage/:bucket/upload` proxy while others (like `generated-media`) have their own
+  dedicated feature-controller route with route-specific (sometimes stricter) limits. `constants/buckets.ts` holds the client-side constraint
+  mirrors (currently just `generatedMediaUpload`: 15 MB / png+jpeg+webp — the actual multer limit on `POST /generated-media/upload`, stricter
+  than the `generated-media` bucket's general 25 MB ceiling, confirmed by reading the controller's `FileInterceptor` options directly).
+  **Not migrated**: `services/api/settings.ts`'s pre-existing avatar/logo upload call predates this helper and was left as its own inline
+  `FormData` construction — leaving it alone was a deliberate choice to avoid an unrelated refactor of already-working code; new upload call
+  sites should use `uploadFile()` going forward.
+
+## Phase 2l — Admin console pages (done 2026-09-12)
+- [x] `Overview` (`/admin`)
+- [x] `Workspaces` (`/admin/workspaces`) + `WorkspaceDetail` (`/admin/workspaces/[id]`)
+- [x] `Users` (`/admin/users`) + `UserDetail` (`/admin/users/[id]`)
+- [x] `Conversations` (`/admin/conversations`)
+- [x] `AiUsage` (`/admin/ai-usage`)
+- [x] `Integrations` (`/admin/integrations`)
+- [x] `Billing` (`/admin/billing`)
+- [x] `Tariffs` (`/admin/tariffs`)
+- [x] `Feedback` (`/admin/feedback`)
+- [x] `AuditLogs` (`/admin/audit-logs`)
+- [x] `System` (`/admin/system`)
+- [x] `SendNotification` → `/admin/notifications`
+- [x] Bonus: `Analytics` (`/admin/analytics`) and `AiFeedback` (`/admin/ai-feedback`) — not in the original route list handed off for this phase, but confirmed real/live (see below) and ported too.
+- Depends on Phase 2d (workspace_users permissions) for correct gating — **done**, see Phase 2d writeup above.
+
+**Approach taken: port, not ground-up rewrite**, as decided going in. `dev.operatora/app/admin/src` (Vite + React Router + TanStack Query + shadcn/Tailwind v3) uses the same query library and the same backend as this repo, so every page's query keys/endpoints/filter shapes/mutation payloads were read directly from the old `hooks/*.ts` files (not guessed) and ported 1:1; only the router (React Router → Next.js App Router file routes under `src/app/(admin)/admin/<route>/page.tsx`) and UI kit (shadcn/Radix → this repo's plain-table/HeroUI conventions, Tailwind v3 → v4) were rewritten.
+
+**Gating decision — deviates from the phase brief on purpose, with reasoning**: the brief said to reuse `canAccessModule`/`useModulePermission` (Phase 2d) for the layout guard instead of a bespoke `AdminAuthGuard`. Tracing the real backend guard (`admin/guards/super-admin.guard.ts`) shows the admin console's actual authorization is **platform-level**, not workspace-scoped: `SuperAdminGuard` requires the global `super_admin` role **and** a server-side `SUPER_ADMIN_EMAILS` allowlist check (`auth-controller/check-user-role/check-user-role.controller.ts`'s `isPlatformSuperAdmin` field — role alone is explicitly insufficient, per the old backend's own comment: "Yangi signup'lar super_admin role olsalar ham, email allowlist'da bo'lmasa — ruxsat yo'q"). `canAccessModule`/`useModulePermission` (Phase 2d) cover a completely different, unrelated dimension — the *workspace-scoped* `workspace_users.role/permissions` RBAC matrix (`PermissionModule` = `dashboard`/`leads`/`billing`/etc., tenant features) — there is no `admin_console` entry in that matrix and adding one would misrepresent what the backend actually checks. The pre-existing `(admin)/admin/layout.tsx` guard (`isAdmin(roles)`, global-role check) was left as-is rather than swapped for a mismatched dimension; it's a UX courtesy either way since the backend independently 403s on both the missing role and the missing email-allowlist entry, which the frontend has no way to predict ahead of a request. Documented inline in `src/features/admin/types.ts`'s file header.
+
+**Backend verification**: every endpoint used was traced directly against a real, `SuperAdminGuard`-protected NestJS controller under `dev.operatora/app/backend/src/admin/controllers/*` (`admin-overview`, `admin-workspaces` + `admin-workspace-detail`, `admin-users`, `admin-conversations`, `admin-ai-usage`, `admin-integrations`, `admin-billing` + `admin-billing-notifications`, `admin-plans` + `admin-ai-model-pricing`, `admin-feedback`, `admin-audit-logs`, `admin-system`, `admin-notifications`, `admin-analytics`, `admin-ai-feedback`, `admin-impersonation`) — no `db-proxy` escape hatch was needed anywhere in this phase; the admin surface has full dedicated REST coverage. No backend drift found: every route, query param, and DTO shape in the old admin frontend's hooks matched the current controllers/DTOs read directly from source.
+
+**Analytics + AiFeedback (bonus, not in the original brief)**: `dev.operatora/app/admin/src/App.tsx` registers two more routes (`analytics`, `ai-feedback`) than ARCHITECTURE.md's route list mentions, both wired to real, live, `SuperAdminGuard`-protected controllers (`admin-analytics.controller.ts` — product usage events, distinct from AI token spend; `admin-ai-feedback.controller.ts` — agent-reply thumbs up/down review queue, distinct from the user-submitted app `Feedback` page). Confirmed real and ported, per the task's explicit instruction to check whether these are live and worth porting.
+
+**Depth simplifications made deliberately (not backend gaps — the endpoints exist, just not all wired in this pass)**, each noted in the relevant page's own doc comment:
+- **AI & Usage** (`/admin/ai-usage`): wired the `overview` endpoint (totals, top workspaces, by-model, by-feature) only. `by-day`, `recent` (events), `models`/`features` lookups, and the per-workspace drill-in (`GET /admin/ai-usage/workspace/:id`) all exist in `services/api/admin/aiUsage.ts` + their hooks but aren't wired into the page yet — no chart library dependency was added (`recharts` is already a repo dependency but wasn't pulled in here to keep this pass to plain tables/numbers, matching the AuditLogTab precedent already established elsewhere in this repo).
+- **Analytics** (`/admin/analytics`): same simplification — `overview` only; `by-day` and the raw `events` list (with its own pagination) exist in the service/hooks layer but aren't wired into the page.
+- **Tariffs** (`/admin/tariffs`): numeric seat/storage limits (`SEAT_LIMIT_KEYS`), channel checkboxes, and `agentic_mode` are fully editable and PATCH `/admin/plans/:slug` for real; AI model $/1M pricing is fully editable and PUTs `/admin/ai-model-pricing` for real. The old page's third editable surface — a 12-feature × 7-model `ai_feature_models` assignment matrix per plan — is rendered read-only here (its own PATCH shape is supported server-side and typed in `UpdatePlanPayload`, just not wired to an editor UI in this pass) to keep the page's scope bounded.
+- **WorkspaceDetail** (`/admin/workspaces/[id]`): all seven real sub-resources (overview/users/leads/conversations/integrations/billing/entitlements) are wired with real data and pagination where the backend paginates; kept to one tabbed page with plain tables rather than the old page's 1767-line dialog-heavy shadcn implementation — per the task brief, no pixel parity was attempted.
+- **Users/UserDetail**: `impersonate` mints a real token pair (`POST /admin/impersonate/:userId`) but the UI only surfaces a success/failure message rather than actually switching the browser's session to the impersonated user — silently swapping this admin's own stored tokens for another user's inside the same browser tab is a real security footgun this pass deliberately didn't build; flagged in the page's doc comment as a follow-up if an "act as user" mode is ever wanted.
+- Filter/sort state on every list page is local component `useState`, not URL state (`useSearchParams`) — a scoped simplification for this internal-tool console (not customer-facing, not bookmarked/shared), called out once here rather than per-page.
+
+**New shared infrastructure added** (justified — needed by ≥2 admin pages, no existing equivalent): `src/components/shared/ConfirmDialog.tsx` (generic confirm/destructive-action modal; `ARCHITECTURE.md` planned a shared version under `components/shared/` but only feature-specific variants like `DeleteMemberConfirm` existed before this phase). Admin-console-scoped (not promoted to cross-app `components/shared/` beyond `ConfirmDialog`) additions live under `src/features/admin/components/`: `AdminNav` (the console's own in-page tab strip — `AdminLayout` reuses the main `AppShell`/icon-rail sidebar rather than a second full admin sidebar, so this renders inside the page content), `AdminKpiCard`, `AdminSectionCard`, `AdminFilterBar`, `AdminSelect`, `AdminPagination`.
+
+**Files**: `src/features/admin/types.ts` (all admin domain types, traced field-for-field against the old hooks + real DTOs), `src/features/admin/formatters.ts`, `src/features/admin/components/{AdminNav,AdminKpiCard,AdminSectionCard,AdminFilterBar,AdminSelect,AdminPagination}.tsx`, `src/features/admin/hooks/useAdmin{Overview,Workspaces,Users,Conversations,AiUsage,Integrations,Billing,Plans,Feedback,AuditLogs,System,Notifications,Analytics,AiFeedback}.ts`, `src/services/api/admin/{shared,overview,workspaces,users,conversations,aiUsage,integrations,billing,plans,feedback,auditLogs,system,notifications,analytics,aiFeedback}.ts`, `src/components/shared/ConfirmDialog.tsx`; pages under `src/app/(admin)/admin/{page,workspaces/page,workspaces/[id]/page,users/page,users/[id]/page,conversations/page,ai-usage/page,integrations/page,billing/page,tariffs/page,feedback/page,ai-feedback/page,audit-logs/page,system/page,notifications/page,analytics/page}.tsx`; `src/app/(admin)/admin/layout.tsx` extended to render `AdminNav`.
+
+**Verification**: `npm run typecheck` clean; scoped `npx eslint` over every file touched/added this phase clean (0 errors, 0 warnings after one fix — an unused-var-only-used-as-type warning in the WorkspaceDetail entitlements tab). `npm run build` succeeds; the route table shows all 16 new routes (`/admin`, `/admin/workspaces`, `/admin/workspaces/[id]`, `/admin/users`, `/admin/users/[id]`, `/admin/conversations`, `/admin/ai-usage`, `/admin/analytics`, `/admin/integrations`, `/admin/billing`, `/admin/tariffs`, `/admin/feedback`, `/admin/ai-feedback`, `/admin/audit-logs`, `/admin/system`, `/admin/notifications`) registered, static where the route has no dynamic segment. `new-operatora-dev` (PM2, port 3033) restarted; unauthenticated `curl` against all 14 top-level admin routes returns 307 → `/login` (the edge `proxy.ts` guard, derived from `ROUTES.admin`'s `/admin` prefix, correctly covers every sub-route) — no server crash, no 500, no Next.js error overlay. **Not verified** (same standing limitation as every phase since Phase 2a, compounded here by needing a `SUPER_ADMIN_EMAILS`-allowlisted `super_admin` account, which this environment has no credentials for): interactive click-through with a real super-admin session — recommend exercising, once such an account exists on `operatora_test`, every write action added this pass (workspace suspend/reactivate/extend-trial/extend-subscription/expire-tariff/revoke-tariff/delete, entitlement toggles, user lock/unlock/role add-remove/session revoke/impersonate, feedback status/notes/delete, plan limit/channel/pricing edits, AI instruction CRUD, app-info edit, send-notification with image upload).
+
+## Scope change (2026-09-12): backend work now authorized
+
+User explicitly decided (2026-09-12, after Phase 3/4 review): to reach real feature parity for migrating fully off the old frontend, backend gaps flagged during Phase 2e/2h/2f/2g cannot stay "flagged, not faked" forever — they need real backend endpoints. **The old rule against touching `/www/wwwroot/dev.operatora` is relaxed specifically for `app/backend`** (the live NestJS service both frontends share, deployed to test/beta/prod): backend changes there are now in scope, **additive-only** (new endpoints/columns, never altering or removing what the old frontend already depends on), verified against `test.operatora.ai` before considering done. The rest of `dev.operatora` (old frontend `app/src`, `app/admin/src`) remains read-only reference, unchanged.
+
+## Phase 2m — Notifications bell + team-chat mention UI (done 2026-09-12)
+- [x] `notificationsApi` (`src/services/api/notifications.ts`) — confirmed by grepping `dev.operatora/app/backend/src` for `*notification*controller*` that no controller reads a user's own `notifications` rows (only `notification-rules`, `push-notifications`, and the admin-only "send" endpoint in `admin-notifications.controller.ts` exist), so this goes through `db-proxy` (`{ table: 'notifications', scope: 'user' }`, per Phase 2k). Added `count: 'exact'` support to `DbProxyRequestBody`/a new `dbProxyQueryWithCount` in `src/services/api/db-proxy.ts` (backend already supported it in `db-proxy.service.ts`, just wasn't exposed on the frontend client) so the unread badge is a true count independent of the list's page size, not an approximation from a capped page. `list()` returns `{ items, unreadCount }`; `markRead(id)`/`markAllRead()` are plain idempotent updates.
+- [x] Bell dropdown (`src/features/notifications/components/NotificationsBell.tsx`, HeroUI `Popover`) wired into `AppSidebar.tsx` replacing the inert placeholder — loading/error (retry)/empty states via the existing shared components, unread-count badge, mark-one-read (optimistic, rolls back on failure) and mark-all-read. Query keyed off the exact `userNotificationsQueryKey(userId)` Phase 2k's socket handler already invalidates, so realtime updates flow straight in. Row click only deep-links for the two types with an unambiguous target (`lead_update` → `/leads`, `message` → `/messages`); other types (`system` covers both task assignment/overdue *and* generic admin broadcasts with no related entity, so it can't be routed safely) just mark read — see `hrefFor()`'s comment for the reasoning.
+- [x] Team-chat mention UI — checked `features/messages`, `features/chat`, `features/team` directly: no `@mention` parsing/highlighting exists in `TeamChatPanel.tsx` (plain message rows) and no toast infrastructure exists anywhere in this repo, so per the brief this deliberately does *not* invent either. `onMention` (wired in `providers.tsx`'s `UserNotificationsBridge`) does the minimal correct thing: the mention already surfaces through the Notifications bell above with zero extra code (`subscribeToUserNotifications` unconditionally invalidates for `team_chat_mention`, `onMention` is just an extra hook into the same event), and additionally invalidates the `team-chat-feed` query for the user's current workspace so an already-open Team Chat panel shows the mentioning message immediately instead of waiting on the separate `messages:{workspaceId}` topic's own debounce.
+- Known gap: no click-through verification with a real seeded account/mention in this environment (same standing limitation as Phase 4's note) — verified via typecheck/lint/build only.
+
+## Phase 2n — Backend: public form submission endpoint (done 2026-09-12)
+- [x] `POST /api/public/forms/:idOrSlug` — same path as the existing `GET` (matches what the frontend's `src/services/api/publicForms.ts` already calls). Public, `@Throttle` 10/min/IP via `AuthThrottlerGuard` (same pattern as `PublicBoardController`'s share-link routes). Request `{ data: Record<string, string|number|boolean> }`; success `201 { ok: true, id }`; validation error `400 { code: 'VALIDATION_ERROR', errors: { [field]: message } }`; unknown form `404`. Validates required/type per the form's own `fields` schema (text/email/phone/number/textarea/select/checkbox), drops any keys not declared in that schema, writes to `form_submissions` with `workspace_id` derived server-side from the form row (never client-supplied).
+- **Important correction to the "scope change" note above**: `dev.operatora/app/backend` is a stale local reference checkout — its `test` branch was behind the real deploy and **no PM2 process runs from it**. The actual live backend for `test.operatora.ai` is a separate checkout at **`/www/wwwroot/test.operatora.ai/app/backend`** (PM2 `operatora-test-backend`, 2 cluster workers), same for beta/prod (`beta.operatora.ai/app/backend`, `operatora.ai/app/backend`). **All backend work from Phase 2n onward targets `test.operatora.ai/app/backend` directly**, verified live, committed and pushed to the shared `test` branch from that checkout — not `dev.operatora`, which stays purely a read-only reference for inspecting old-frontend behavior and now has its stray uncommitted diff reverted (confirmed clean).
+- **Real schema drift found and worked around, not fixed**: `forms.workspace_id` exists in real Postgres (migration `0029_workspace_id_for_columns_fields_forms.sql`) but was never added to `schema.prisma`, so `prisma.forms` queries (including the existing `GET` route) silently omit it. The new POST handler reads it via raw `this.pg.query()` instead of Prisma. Did not fix the Prisma schema itself — that touches an existing model/route, out of scope for an additive change. **Follow-up worth a separate task**: add `workspace_id String?` to the `forms` model in `schema.prisma` so `GET /api/public/forms/:idOrSlug` also returns it correctly (today the frontend's `PublicForm.workspace_id` normalizes to `""`).
+- **Verified live end-to-end against `test.operatora.ai`** (not just typecheck/build): built (`nest build`, clean), `pm2 restart operatora-test-backend` (both cluster workers restarted cleanly, "Nest application successfully started" in logs, no new errors — the `ensureSchema: must be owner of table ...` errors in the log are pre-existing DB-permission warnings unrelated to this change), inserted a real throwaway test form directly in `operatora_test` (safe/throwaway DB), then: `GET` returned the schema correctly; `POST` with a valid payload → `201` and the row landed in `form_submissions` with the correct `workspace_id`; `POST` missing a required field → `400` with the right `errors` key; `POST` with a malformed email → `400` with the right field-level message; confirmed `GET /api/public/health` still `200` (no regression from the restart). Test form and its submission cleaned up afterward (cascade-deleted). Committed (`e67da71e`) and pushed to `origin/test`.
+
+## Phase 2o — Backend: quiz auto-generation persistence (not started)
+- [ ] Fix `/fn/generate-feedback-quiz` (or wherever it lives) to actually persist a `quizzes` row instead of being stateless — confirmed broken during Phase 2g. Unblocks the "approve feedback → auto quiz" flow in `/operators` and the take-quiz flow in `/operator-feedbacks`.
+
+## Phase 2p — Backend: social-media analysis endpoints (not started)
+- [ ] Real handlers for "analyze conversations" / "generate content ideas" (the old `functions.handlers.ts#aiChatHandler('social-media', ...)` 400s on this payload shape today, confirmed during Phase 2h) — needs actual analysis logic (word frequency, top topics, etc.), not just routing fixes.
+
+## Phase 2q — Backend/integration: Payme/Click checkout gateway (not started)
+- [ ] Verify and wire the real external payment gateway call for `/checkout`'s Payme/Click panel (ported with the right call shape in Phase 2f but unverified — flagged a possible matching `payment` PM2 service at `/www/wwwroot/payment` worth checking first before writing new integration code).
+
+## Phase 3 — Validation & Hardening (done 2026-09-12, covering Phase 2d–2l)
+- [x] Error/loading/empty/offline states across features — verified during the Phase 4 code-reviewer pass below (no blank/infinite-loading screens, no faked mutation success while offline found).
+- [x] Network-flood audit (dedupe, debounce, retry/backoff) — verified during the Phase 4 code-reviewer pass: global `QueryClient` disables retry on 4xx, caps/backoffs on 5xx/network errors, mutations default `retry: false`; submit-triggered search (not per-keystroke) on new list UIs; parallel fetching used correctly (e.g. finance analytics `Promise.all`); realtime invalidations debounced.
 
 ## Phase 4 — Review & Deploy
-- [ ] code-reviewer pass
+- [x] code-reviewer pass (2026-09-12) — full breadth-first review of Phase 2d through 2l (workspace permissions, public pages, auth-adjacent pages, operators, instructions/social-media-advisor, forms/gallery/upload-helper, finance, realtime notifications, admin console port). **Result: clean.** Confirmed `dev.operatora` untouched (zero diff); db-proxy write-role/scope enforcement is genuinely server-side, not a hidden-UI gate (instructions/forms/finance `canEdit*`/`canManage*` helpers are documented UX-courtesy mirrors only); finance role gating consistent between page-level and per-tab-action checks; admin console `isAdmin()` layout gate correctly treated as UX-only since the real boundary is the backend's `SuperAdminGuard`; `session_superseded` handling in `src/services/api/client.ts` correctly scopes forced-logout to only the evicted tab (decodes own JWT `wsid` claim, no signature check, explicitly not a security boundary); no unjustified `any`; no new deps introduced. **One finding, fixed**: `src/app/(admin)/admin/users/[id]/page.tsx` — Unlock and Revoke-session buttons were missing `isDisabled={mutation.isPending}` double-click guards (inconsistent with every other mutation button on the same page); added.
 - [ ] PM2 production deployment config
+- **Standing follow-up (not a code issue)**: interactive click-through verification of Phase 2d–2l features still needs real seeded test accounts (operator/sales_manager/finance_manager/super_admin roles, seeded `operators`/`feedback`/`quizzes`/`courses`/`groups` data) — none available in this environment across any phase. Recommend seeding `operatora_test` before Phase 4 sign-off.
 
 ## Open Questions (from architecture pass — see `ARCHITECTURE.md`)
 - [x] Cookie vs Bearer auth for new frontend → **Bearer token** (decided 2026-08-12)
@@ -832,4 +1288,4 @@ Full parity port of the old frontend's per-message context menu, reversing the "
 All open questions resolved — Phase 1 architecture is fully closed out. Ready to begin Phase 2 scaffolding.
 
 ---
-Last updated: 2026-08-27 (Messages — Telegram message context menu)
+Last updated: 2026-09-12 (Phase 2l — Admin console pages)

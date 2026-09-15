@@ -20,7 +20,7 @@ export function isAccountMissing(error: unknown): boolean {
 export function useEskizAccountQuery(enabled: boolean) {
   return useQuery({
     queryKey: ["eskiz-account"],
-    queryFn: () => eskizSmsApi.getAccount(),
+    queryFn: async () => (await eskizSmsApi.getAccount()) ?? null,
     enabled,
   });
 }

@@ -27,7 +27,7 @@ import type { LeadLinkedConversation } from "@/features/leads/types";
  */
 const TABLE = "conversations";
 const SELECT_COLUMNS =
-  "id, client_name, client_phone, conversation_date, conversation_time, status, ai_score, sentiment, entities";
+  "id, client_name, client_phone, conversation_date, conversation_time, status, ai_score, sentiment, entities, audio_file_path, duration, operator_name, summary";
 const RECENT_LIMIT = 300;
 
 function extractLeadIds(entities: unknown): string[] {

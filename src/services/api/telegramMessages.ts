@@ -1,6 +1,19 @@
 import { apiFetch } from "@/services/api/client";
 import { parseTelegramMessagesResponse } from "@/features/messages/lib/telegramMessagesPage";
+import { telegramAccountApi } from "@/services/api/telegramAccount";
 import type { TelegramChat, TelegramMessage } from "@/features/messages/types";
+
+/** Digits-only comparison, one side allowed to be a suffix of the other —
+ * neither `TelegramChat.phone` nor `LeadRow.phone_number` is normalized to
+ * a single format anywhere in this app (confirmed: no `+`/country-code
+ * enforcement in `leads/schema.ts`, raw unformatted render on both sides),
+ * so a `+998901234567` vs `901234567` mismatch must not read as "no match". */
+function phonesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const da = (a ?? "").replace(/\D/g, "");
+  const db = (b ?? "").replace(/\D/g, "");
+  if (da.length < 6 || db.length < 6) return false;
+  return da === db || da.endsWith(db) || db.endsWith(da);
+}
 
 /**
  * Messages — Telegram channel. Traced directly against
@@ -60,6 +73,31 @@ export const telegramChatsApi = {
       `/telegram-chats/${encodeURIComponent(id)}/link-lead?workspace_id=${encodeURIComponent(workspaceId)}`,
       { method: "PATCH", body: { lead_id: leadId } },
     );
+  },
+
+  /** Resolve "this lead's Telegram chat" for the Leads channel-chat popup.
+   * No `?lead_id=` filter exists on `/telegram-chats`, so this lists chats
+   * and filters client-side — mirrors `eskizSmsApi.getMessagesForLead`'s
+   * established pattern for the same "resolve chat by lead" problem on the
+   * SMS channel. Two things that made the first pass silently find nothing
+   * even for a lead auto-created FROM an inbound Telegram message:
+   *  - `mode` is a real per-workspace setting (`business_bot` or
+   *    `user_account`, see `telegramAccountApi.getSettings()` /
+   *    `TelegramPanel.tsx`'s connection-mode state) — hardcoding
+   *    `business_bot` returns zero chats for any workspace actually running
+   *    `user_account` mode. Read the real mode first.
+   *  - the `search` query param's match fields are undocumented server-side
+   *    (only ever used for a name/username-styled search box in
+   *    `TelegramPanel.tsx`, never confirmed to match `phone`) — don't rely
+   *    on it to narrow by phone; fetch a plain page and filter client-side
+   *    with `phonesMatch` instead, which tolerates a country-code prefix
+   *    mismatch between `TelegramChat.phone` and `LeadRow.phone_number`
+   *    (neither is normalized to one format anywhere in this app). */
+  async getChatForLead(leadId: string, workspaceId: string, phone: string | null): Promise<TelegramChat | null> {
+    const settings = await telegramAccountApi.getSettings().catch(() => null);
+    const mode = settings?.connection_mode ?? "business_bot";
+    const chats = await telegramChatsApi.list({ workspaceId, limit: mode === "user_account" ? 500 : 200, mode });
+    return chats.find((c) => c.linked_lead_id === leadId) ?? chats.find((c) => phonesMatch(c.phone, phone)) ?? null;
   },
 
   /** `GET /telegram-chats/assignees` — workspace members eligible for chat assignment. */

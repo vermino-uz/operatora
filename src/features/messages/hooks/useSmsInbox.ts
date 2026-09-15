@@ -17,7 +17,11 @@ const INVALIDATE_DEBOUNCE_MS = 800;
  * "Leads — SMS templates + compose" entry for the full pipeline trace
  * (real Eskiz gateway, not the dead `lead_sms_*` tables). */
 export function useEskizAccountQuery() {
-  return useQuery({ queryKey: ["eskiz-account"], queryFn: () => eskizSmsApi.getAccount(), staleTime: 60_000 });
+  return useQuery({
+    queryKey: ["eskiz-account"],
+    queryFn: async () => (await eskizSmsApi.getAccount()) ?? null,
+    staleTime: 60_000,
+  });
 }
 
 export function useEskizTemplatesQuery(enabled: boolean) {

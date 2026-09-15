@@ -14,7 +14,8 @@ import type {
 /** `/eskiz/*` — see `features/eskiz/types.ts` for the full contract trace. */
 export const eskizApi = {
   async getAccount(): Promise<EskizAccount | null> {
-    return apiFetch<EskizAccount | null>("/eskiz/account");
+    const data = await apiFetch<EskizAccount | null | undefined>("/eskiz/account");
+    return data ?? null;
   },
 
   async getGuidance(): Promise<EskizGuidance> {

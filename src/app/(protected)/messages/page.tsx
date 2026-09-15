@@ -54,8 +54,11 @@ function MessagesPageContent() {
   }, [searchParams]);
 
   const workspaceId = useSessionStore((s) => s.workspaceId);
+  const instagramChatParam = searchParams.get("ig_chat");
   const [topTab, setTopTab] = useState<"inbox" | "team">("inbox");
-  const [channel, setChannel] = useState<ChannelKey>(telegramDeepLink ? "telegram" : "telegram");
+  const [channel, setChannel] = useState<ChannelKey>(() =>
+    searchParams.get("channel") === "instagram" ? "instagram" : "telegram",
+  );
   const [telegramUnread, setTelegramUnread] = useState(0);
   const [instagramUnread, setInstagramUnread] = useState(0);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -109,7 +112,7 @@ function MessagesPageContent() {
               )
             ) : channel === "instagram" ? (
               canViewInstagram ? (
-                <InstagramPanel onUnreadChange={setInstagramUnread} onChatOpenChange={setMobileChatOpen} />
+                <InstagramPanel onUnreadChange={setInstagramUnread} onChatOpenChange={setMobileChatOpen} initialChatId={instagramChatParam} />
               ) : (
                 <LockedChannel name="Instagram" />
               )

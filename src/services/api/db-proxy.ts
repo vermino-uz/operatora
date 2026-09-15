@@ -14,9 +14,10 @@ import { ApiError } from "@/types/api";
  *
  * Use this only for tables the old frontend accessed via generic
  * `supabase.from()` chains with no dedicated REST controller of their own
- * (currently: canned responses). Anything with its own controller
- * (departments, brand, team, ...) should keep using that instead — this is
- * a narrow compat seam, not a general-purpose ORM client.
+ * (currently: canned responses, instructions/quick_links, forms/
+ * form_submissions). Anything with its own controller (departments, brand,
+ * team, ...) should keep using that instead — this is a narrow compat seam,
+ * not a general-purpose ORM client.
  */
 
 export type DbProxyFilterOp =
@@ -61,6 +62,10 @@ export interface DbProxyRequestBody {
   values?: unknown;
   onConflict?: string;
   returning?: "representation" | "minimal" | null;
+  /** Requests an exact row count alongside `data` (`db-proxy.service.ts`
+   * runs a separate `COUNT(*)` query, independent of `limit`) — used where a
+   * total (e.g. unread count) is needed without pulling every row. */
+  count?: "exact" | "planned" | "estimated" | null;
 }
 
 export interface DbProxyResponse<T> {
@@ -86,4 +91,22 @@ export async function dbProxyQuery<T>(table: string, body: DbProxyRequestBody): 
     throw new ApiError({ statusCode: res.status || 500, message: res.error.message, code: res.error.code });
   }
   return res.data as T;
+}
+
+/** Like `dbProxyQuery`, but also returns the exact row count (pass
+ * `count: 'exact'` in `body`) — for callers that need a total independent
+ * of `limit` (e.g. an unread-notifications badge) without a second
+ * hand-rolled request. */
+export async function dbProxyQueryWithCount<T>(
+  table: string,
+  body: DbProxyRequestBody,
+): Promise<{ data: T; count: number | null }> {
+  const res = await apiFetch<DbProxyResponse<T>>(`/db/${encodeURIComponent(table)}/query`, {
+    method: "POST",
+    body,
+  });
+  if (res.error) {
+    throw new ApiError({ statusCode: res.status || 500, message: res.error.message, code: res.error.code });
+  }
+  return { data: res.data as T, count: res.count };
 }

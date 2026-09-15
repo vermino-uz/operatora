@@ -21,8 +21,22 @@ import { ROUTES } from "@/constants/routes";
  * without ever being added to a hand-maintained prefix list here), so this
  * list is generated instead of hand-kept in sync.
  */
+/**
+ * Routes present in `ROUTES` (so other code can reference them via the same
+ * single source of truth) that are nonetheless public/unauthenticated pages,
+ * not protected-app pages — `doc` is a public user guide also linked from
+ * the logged-in sidebar (mirrors the old app's `/doc` route, which sits
+ * outside its `ProtectedRoute` tree entirely; see `ARCHITECTURE.md` Part 1
+ * "Pages/Routes"). Keep this list in sync with any future `ROUTES` entry
+ * that's public-but-also-linked-from-the-app-shell.
+ */
+const PUBLIC_ROUTES_WITHIN_ROUTES: string[] = [ROUTES.doc];
+
 const PROTECTED_PREFIXES = [...new Set(Object.values(ROUTES))].filter(
-  (path) => path !== ROUTES.login && path !== ROUTES.signup,
+  (path) =>
+    path !== ROUTES.login &&
+    path !== ROUTES.signup &&
+    !PUBLIC_ROUTES_WITHIN_ROUTES.includes(path),
 );
 const AUTH_PREFIXES = [ROUTES.login, ROUTES.signup];
 

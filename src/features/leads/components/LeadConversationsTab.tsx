@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Input, Label, TextField } from "@heroui/react";
+import { CirclePlayFill, Pause } from "@gravity-ui/icons";
 
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -13,17 +14,18 @@ import {
 import { leadConversationLinksApi } from "@/services/api/leadConversationLinks";
 import type { LeadLinkedConversation } from "@/features/leads/types";
 import { leadActionErrorMessage } from "@/features/leads/leadActionError";
+import { ConversationDetailPanel } from "@/features/conversations/components/ConversationDetailPanel";
+import { useGlobalAudio } from "@/features/audio/GlobalAudioProvider";
 
-/** Conversations linked to this lead via `conversations.entities`; see
- * `services/api/leadConversationLinks.ts`'s doc comment for the bounded
- * recent-scan tradeoff. No per-conversation deep link exists in this app
- * yet (`/conversations` has no id-addressable detail route — confirmed by
- * reading `app/(protected)/conversations/page.tsx`, the detail panel is
- * pure client state, not a route), so this links to the list page only,
- * matching what's actually reachable rather than fabricating a URL. */
+/** Conversations linked to this lead via `conversations.entities`. Clicking a
+ * row opens the full conversation detail (audio + transcript + AI analysis)
+ * inline in this tab — same pattern as the old `LeadDetailsDialog` opening
+ * `ConversationDetailsDialog`, not a redirect to `/conversations`. */
 export function LeadConversationsTab({ leadId, isActive }: { leadId: string; isActive: boolean }) {
   const linkedQuery = useLeadLinkedConversationsQuery(leadId, isActive);
   const { link, unlink } = useLeadConversationLinkMutations(leadId);
+  const globalAudio = useGlobalAudio();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<LeadLinkedConversation[]>([]);
@@ -54,15 +56,45 @@ export function LeadConversationsTab({ leadId, isActive }: { leadId: string; isA
     }
   }
 
+  async function handlePlay(e: React.MouseEvent, conv: LeadLinkedConversation) {
+    e.stopPropagation();
+    if (!conv.audio_file_path) return;
+    const isThis = globalAudio.conversationId === conv.id;
+    if (isThis && globalAudio.isPlaying) {
+      globalAudio.pause();
+      return;
+    }
+    if (isThis && !globalAudio.isPlaying) {
+      globalAudio.resume();
+      return;
+    }
+    try {
+      await globalAudio.playConversation(conv.id, {
+        title: conv.client_name || conv.client_phone || "Conversation",
+        subtitle: conv.operator_name || undefined,
+      });
+    } catch {
+      setError("Couldn't play this recording.");
+    }
+  }
+
+  if (selectedId) {
+    return (
+      <div className="-mx-1 min-h-[28rem]">
+        <ConversationDetailPanel conversationId={selectedId} onBack={() => setSelectedId(null)} forceBack />
+      </div>
+    );
+  }
+
   if (linkedQuery.isLoading) return <LoadingState label="Loading conversations…" />;
   if (linkedQuery.isError) return <ErrorState error={linkedQuery.error} onRetry={() => linkedQuery.refetch()} />;
   const linked = linkedQuery.data ?? [];
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-foreground/50">
-          Conversations linked to this lead ({linked.length}) — scanned from the most recent 300 workspace-wide.
+          Linked conversations ({linked.length}) — open one to play the recording here.
         </p>
         <Button size="sm" variant="secondary" onPress={() => setShowPicker((v) => !v)}>
           {showPicker ? "Close" : "Link a conversation"}
@@ -80,7 +112,8 @@ export function LeadConversationsTab({ leadId, isActive }: { leadId: string; isA
             {results.map((conv) => (
               <li key={conv.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted">
                 <span>
-                  {conv.client_name || conv.client_phone || "Unknown"} · {conv.conversation_date} {conv.conversation_time}
+                  {conv.client_name || conv.client_phone || "Unknown"} · {conv.conversation_date}{" "}
+                  {conv.conversation_time}
                 </span>
                 <Button size="sm" variant="secondary" isDisabled={link.isPending} onPress={() => handleLink(conv.id)}>
                   Link
@@ -103,26 +136,56 @@ export function LeadConversationsTab({ leadId, isActive }: { leadId: string; isA
       {linked.length === 0 ? <EmptyState title="No linked conversations" /> : null}
 
       <ul className="flex flex-col gap-2">
-        {linked.map((conv) => (
-          <li key={conv.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
-            <div>
-              <p className="font-medium text-foreground">{conv.client_name || conv.client_phone || "Unknown"}</p>
-              <p className="text-xs text-foreground/50">
-                {conv.conversation_date} {conv.conversation_time}
-                {conv.status ? ` · ${conv.status}` : ""}
-                {conv.ai_score != null ? ` · score ${conv.ai_score}` : ""}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <a href="/conversations" className="text-xs text-primary underline">
-                Open list
-              </a>
-              <Button size="sm" variant="ghost" isDisabled={unlink.isPending} onPress={() => unlink.mutate(conv.id)}>
-                Unlink
-              </Button>
-            </div>
-          </li>
-        ))}
+        {linked.map((conv) => {
+          const isThis = globalAudio.conversationId === conv.id;
+          const isPlaying = isThis && globalAudio.isPlaying;
+          return (
+            <li key={conv.id}>
+              <div className="flex items-start gap-2 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20">
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(conv.id)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <p className="text-sm font-medium text-foreground">
+                    {conv.client_name || conv.client_phone || "Unknown"}
+                    {conv.operator_name ? (
+                      <span className="font-normal text-foreground/50"> · {conv.operator_name}</span>
+                    ) : null}
+                  </p>
+                  <p className="mt-0.5 text-xs text-foreground/50">
+                    {conv.conversation_date} {conv.conversation_time}
+                    {conv.duration ? ` · ${conv.duration}` : ""}
+                    {conv.status ? ` · ${conv.status}` : ""}
+                    {conv.ai_score != null ? ` · score ${conv.ai_score}` : ""}
+                  </p>
+                  {conv.summary ? (
+                    <p className="mt-1 line-clamp-2 text-xs text-foreground/60">{conv.summary}</p>
+                  ) : null}
+                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {conv.audio_file_path ? (
+                    <button
+                      type="button"
+                      aria-label={isPlaying ? "Pause recording" : "Play recording"}
+                      onClick={(e) => void handlePlay(e, conv)}
+                      className="flex size-8 items-center justify-center rounded-full border border-border bg-background text-foreground/70 transition-colors hover:bg-[var(--default)] hover:text-foreground"
+                    >
+                      {isPlaying ? (
+                        <Pause className="size-3.5" aria-hidden="true" />
+                      ) : (
+                        <CirclePlayFill className="size-3.5" aria-hidden="true" />
+                      )}
+                    </button>
+                  ) : null}
+                  <Button size="sm" variant="ghost" isDisabled={unlink.isPending} onPress={() => unlink.mutate(conv.id)}>
+                    Unlink
+                  </Button>
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

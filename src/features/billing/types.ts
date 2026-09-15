@@ -77,6 +77,39 @@ export interface ChargeSubscriptionResponse {
   tier?: string;
 }
 
+/**
+ * `POST /billing/subscriptions` (`SubscriptionsInternalController`, real
+ * endpoint traced directly in `subscriptions.controller.ts`/
+ * `subscriptions.service.ts#createOrder` — NOT the JWT-guarded
+ * `BillingController`'s own `GET /billing/plans`, which the old frontend's
+ * `Pricing.tsx` never actually calls; see `PRICING_PLANS` below) — creates a
+ * pending `subscription_orders` row and returns the amount/line items to
+ * charge for the checkout page.
+ */
+export interface CreateSubscriptionOrderResponse {
+  sub_id: string;
+  order_id: string;
+  workspace_id: string;
+  amount: number;
+  currency: string;
+  duration_days: number;
+  plan_name: string;
+  cycle: "monthly" | "yearly";
+  line_items: InvoiceLineItem[];
+  extra_operator_seats: number;
+  seat_unit_uzs: number | null;
+}
+
+/** `POST /billing/paylov/invoice` response — used by the Payme/Click
+ * checkout method as a fallback provider alongside the external HAAD
+ * gateway session (see `CheckoutPageContent.tsx` doc comment for the real
+ * vs. unverifiable-here split). */
+export interface PaylovInvoiceResponse {
+  paylov_url: string;
+  paylov_invoice_id: number;
+  transaction_id: string;
+}
+
 export interface DeclineSeatResponse {
   ok: boolean;
   extra_operator_seats: number;

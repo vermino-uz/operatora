@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Button, DateField, DateRangePicker, Input, ListBox, NumberField, RangeCalendar, Select } from "@heroui/react";
+import { Button, DateField, DateRangePicker, ListBox, NumberField, RangeCalendar, Select } from "@heroui/react";
 import { parseDate } from "@internationalized/date";
-import { Magnifier as Search, FunnelXmark } from "@gravity-ui/icons";
-
-import { useDebounce } from "@/hooks/useDebounce";
+import { FunnelXmark } from "@gravity-ui/icons";
 import {
   ACADEMIC_STATUS_OPTIONS,
   EMPTY_LEAD_FILTERS,
@@ -36,18 +33,6 @@ const CHANNEL_LABELS: Record<string, string> = {
  * needs the vertical space `ConversationsTable` doesn't compete for.
  */
 export function LeadFiltersBar({ filters, onChange, operators }: LeadFiltersBarProps) {
-  const [searchInput, setSearchInput] = useState(filters.search);
-  const debouncedSearch = useDebounce(searchInput, 350);
-
-  useEffect(() => {
-    if (debouncedSearch !== filters.search) {
-      onChange({ ...filters, search: debouncedSearch });
-    }
-    // Only re-run when the debounced value itself changes — `filters`/`onChange`
-    // deliberately excluded to avoid a feedback loop with the parent's state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
-
   const maritalOptions = [{ id: "", label: "Any" }, ...MARITAL_STATUS_OPTIONS.map((s) => ({ id: s, label: s }))];
   const academicOptions = [{ id: "", label: "Any" }, ...ACADEMIC_STATUS_OPTIONS.map((s) => ({ id: s, label: s }))];
   const channelOptions = [
@@ -75,21 +60,6 @@ export function LeadFiltersBar({ filters, onChange, operators }: LeadFiltersBarP
 
   return (
     <div className="flex flex-wrap items-end gap-3 border-b border-black/[0.08] px-4 py-3 dark:border-white/[0.12]">
-      <div className="relative w-56">
-        <Search
-          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-foreground/40"
-          aria-hidden="true"
-        />
-        <Input
-          aria-label="Search leads"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Name or phone…"
-          className="pl-8"
-          fullWidth
-        />
-      </div>
-
       <label className="flex flex-col gap-1 text-xs text-foreground/50">
         Marital status
         <Select
@@ -308,10 +278,7 @@ export function LeadFiltersBar({ filters, onChange, operators }: LeadFiltersBarP
         <Button
           size="sm"
           variant="secondary"
-          onPress={() => {
-            setSearchInput("");
-            onChange(EMPTY_LEAD_FILTERS);
-          }}
+          onPress={() => onChange(EMPTY_LEAD_FILTERS)}
         >
           <FunnelXmark className="size-4" aria-hidden="true" />
           Clear filters

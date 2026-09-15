@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   BookOpen,
-  Bell,
   Gear as SettingsIcon,
   ArrowRightFromSquare as LogOut,
   Grip,
@@ -21,8 +20,13 @@ import { APP_SITEMAP, topLevelNavTestId, type TopLevelNavItem, type TopLevelNavK
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/state/session-store";
 import { useUiStore } from "@/state/ui-store";
-import { isAdmin } from "@/auth/permissions";
+import { useModulePermission } from "@/hooks/usePermission";
+import { canViewOperatorsPage } from "@/features/operators/permissions";
+import { canViewInstructionsPage } from "@/features/instructions/permissions";
+import { canViewSocialMediaAdvisorPage } from "@/features/social-media-advisor/permissions";
 import { useLogoutMutation } from "@/features/auth/hooks/useLogoutMutation";
+import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
+import { NotificationsBell } from "@/features/notifications/components/NotificationsBell";
 
 function isPathActive(pathname: string, path: string): boolean {
   return pathname === path || pathname.startsWith(`${path}/`);
@@ -213,13 +217,15 @@ export function AppSidebar() {
   const [draggedKey, setDraggedKey] = useState<TopLevelNavKey | null>(null);
   const [dropTargetKey, setDropTargetKey] = useState<TopLevelNavKey | null>(null);
 
-  // Every item is visible to any authenticated user except `ai-dashboards`,
-  // which the old app gates on the workspace-level `owner` role. That role
-  // isn't available client-side yet (only global `roles[]` is fetched — see
-  // PROGRESS.md Phase 2b "Workspace/session bootstrap polish"), so this is a
-  // temporary simplification: approximate "owner-only" with the global admin
-  // check until workspace permissions are wired up.
-  //
+  // `ai-dashboards` is gated by BOTH RBAC dimensions — a global admin role
+  // (ADMIN_ROLES) always sees it; otherwise it falls through to the active
+  // workspace's RBAC matrix (`ai_dashboards.view`), same as the old
+  // AppSidebar's per-workspace gate. While the matrix is still loading,
+  // keep the item visible (`isLoading` short-circuits to true below) — the
+  // page itself shows an access empty-state on a 403 either way.
+  const aiDashboardsPermission = useModulePermission("ai_dashboards", "view");
+  const canViewAiDashboards = aiDashboardsPermission.isLoading || aiDashboardsPermission.allowed;
+
   // Ordered by the user's persisted drag-to-reorder preference — any key
   // not yet in that list (a newly shipped nav item `navOrder` predates)
   // falls back to append at the end, so it doesn't just vanish.
@@ -229,7 +235,10 @@ export function AppSidebar() {
   const visibleItems = orderedKeys
     .map((key) => byKey.get(key))
     .filter((item): item is TopLevelNavItem => Boolean(item))
-    .filter((item) => (item.key === "ai-dashboards" ? isAdmin(roles) : true));
+    .filter((item) => (item.key === "ai-dashboards" ? canViewAiDashboards : true))
+    .filter((item) => (item.key === "operators" ? canViewOperatorsPage(roles) : true))
+    .filter((item) => (item.key === "instructions" ? canViewInstructionsPage(roles) : true))
+    .filter((item) => (item.key === "social-media-advisor" ? canViewSocialMediaAdvisorPage(roles) : true));
 
   function handleDrop(targetKey: TopLevelNavKey) {
     if (draggedKey && draggedKey !== targetKey) {
@@ -318,25 +327,11 @@ export function AppSidebar() {
             );
           })()}
 
-          {/* Notification bell — icon placeholder only, no dropdown/data wired
-              yet (out of scope for this shell pass). */}
-          {(() => {
-            const bellButton = (
-              <button type="button" aria-label="Notifications" className={railButtonClasses(peekExpanded, false)} disabled>
-                <Bell className="size-5 shrink-0" aria-hidden="true" />
-                {peekExpanded ? <span className="truncate text-sm font-medium">Notifications</span> : null}
-              </button>
-            );
-            if (peekExpanded) return bellButton;
-            return (
-              <Tooltip delay={200}>
-                {bellButton}
-                <Tooltip.Content placement="right" offset={12}>
-                  Notifications
-                </Tooltip.Content>
-              </Tooltip>
-            );
-          })()}
+          {/* Notification bell (Phase 2m) — Popover dropdown backed by the
+              real `notifications` table via `notificationsApi`; see
+              `NotificationsBell.tsx`. Its own trigger button reuses the same
+              rail chrome as Doc/Account above/below it. */}
+          <NotificationsBell expanded={peekExpanded} className={railButtonClasses(peekExpanded, false)} />
 
           {/* Account — an inline-expanding panel, not a floating popover.
               `flex-col-reverse` is the key trick: the button is FIRST in
@@ -405,6 +400,8 @@ export function AppSidebar() {
                       <span className="truncate text-xs text-foreground/60">{user.email}</span>
                     ) : null}
                   </div>
+
+                  <WorkspaceSwitcher expanded={peekExpanded && isProfileOpen} />
 
                   <div className="flex flex-col gap-1.5 px-1">
                     <span className="text-xs text-foreground/60">Theme</span>
